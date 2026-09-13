@@ -1271,7 +1271,7 @@ bool Application::openInternalUrl(const QString &url, QVariant context) {
 }
 
 QString Application::changelogLink() const {
-	return u"https://telegramdesktop.github.io/tdesktop/changelog/"_q;
+	return u"https://github.com/NextAlone/Nagram-qt/releases"_q;
 }
 
 bool Application::openCustomUrl(
@@ -2048,7 +2048,7 @@ void Application::RegisterUrlScheme() {
 		.arguments = arguments,
 		.protocol = u"tg"_q,
 		.protocolName = u"Telegram Link"_q,
-		.shortAppName = u"tdesktop"_q,
+		.shortAppName = u"nagram-desktop"_q,
 		.longAppName = QCoreApplication::applicationName(),
 		.displayAppName = AppName.utf16(),
 		.displayAppDescription = AppName.utf16(),
@@ -2059,7 +2059,7 @@ void Application::RegisterUrlScheme() {
 		.arguments = arguments,
 		.protocol = u"tonsite"_q,
 		.protocolName = u"TonSite Link"_q,
-		.shortAppName = u"tdesktop"_q,
+		.shortAppName = u"nagram-desktop"_q,
 		.longAppName = QCoreApplication::applicationName(),
 		.displayAppName = AppName.utf16(),
 		.displayAppDescription = AppName.utf16(),

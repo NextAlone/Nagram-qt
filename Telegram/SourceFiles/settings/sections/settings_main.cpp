@@ -55,6 +55,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/sections/settings_folders.h"
 #include "settings/sections/settings_information.h"
 #include "settings/sections/settings_notifications.h"
+#include "settings/sections/settings_nagram.h"
 #include "settings/settings_power_saving.h"
 #include "settings/sections/settings_premium.h"
 #include "settings/sections/settings_privacy_security.h"
@@ -361,6 +362,13 @@ void Cover::refreshQrButtonGeometry(int newWidth) {
 }
 
 void BuildSectionButtons(SectionBuilder &builder) {
+	builder.addSectionButton({
+		.title = tr::lng_nagram_settings(),
+		.targetSection = NagramId(),
+		.icon = { &st::menuIconSettings },
+		.keywords = { u"Nagram"_q },
+	});
+
 	const auto session = builder.session();
 	const auto controller = builder.controller();
 	const auto showOther = builder.showOther();

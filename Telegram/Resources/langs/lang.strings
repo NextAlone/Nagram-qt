@@ -8775,3 +8775,27 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_folder_archive_status" = "ZIP archive";
 
 // Keys finished
+
+"lng_nagram_settings" = "Nagram Settings";
+"lng_nagram_intro_about" = "Nagram for desktop.\nAn independent client for Telegram.";
+"lng_nagram_settings_about" = "Make Nagram your own. Enhancements will be added here in future updates. The categories below are planned; messaging behavior is unchanged.";
+"lng_nagram_appearance" = "Appearance";
+"lng_nagram_appearance_about" = "Planned: compact chat list, story and reaction visibility, and wider channel posts.";
+"lng_nagram_chats" = "Chats";
+"lng_nagram_chats_about" = "Planned: message timestamps, forwarded dates, chat navigation, call confirmation, and profile details.";
+"lng_nagram_media" = "Media";
+"lng_nagram_media_about" = "Planned: recording controls, sticker timestamps, and video playback preferences.";
+"lng_nagram_privacy" = "Privacy";
+"lng_nagram_privacy_about" = "Planned: local phone-number visibility and activity indicators. Telegram privacy settings remain available in the main settings.";
+"lng_nagram_translation" = "Translation";
+"lng_nagram_translation_about" = "Planned: translation before sending and per-chat automatic translation.";
+"lng_nagram_advanced" = "Advanced";
+"lng_nagram_advanced_about" = "Planned: Chinese–Latin spacing and message filters.";
+"lng_nagram_source" = "Nagram Source Code";
+"lng_nagram_mac_menu_show" = "Show Nagram";
+"lng_nagram_open_from_tray" = "Open Nagram";
+"lng_nagram_quit_from_tray" = "Quit Nagram";
+"lng_nagram_tray_icon_text" = "Nagram is still running here. You can change this in Settings.";
+"lng_nagram_about" = "Nagram Desktop is based on Telegram Desktop. Nagram icon artwork © MaitungTM.";
+
+"lng_nagram_about_api" = "Independent desktop messenger based on {api_link}.";

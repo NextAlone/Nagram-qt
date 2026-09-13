@@ -1644,6 +1644,8 @@ PRIVATE
     mtproto/web_proxy/web_proxy_transport.h
     mtproto/web_proxy/web_proxy_webview.cpp
     mtproto/web_proxy/web_proxy_webview.h
+    nagram/nagram_settings.cpp
+    nagram/nagram_settings.h
     overview/overview_checkbox.cpp
     overview/overview_checkbox.h
     overview/overview_layout.cpp
@@ -1871,6 +1873,8 @@ PRIVATE
     settings/sections/settings_local_storage.h
     settings/sections/settings_main.cpp
     settings/sections/settings_main.h
+    settings/sections/settings_nagram.cpp
+    settings/sections/settings_nagram.h
     settings/settings_recent_searches.cpp
     settings/settings_recent_searches.h
     settings/settings_search.cpp
@@ -2370,7 +2374,7 @@ else()
 endif()
 
 if (build_macstore)
-    set(bundle_identifier "org.telegram.desktop")
+    set(bundle_identifier "xyz.nextalone.nagram.desktop")
     set(bundle_entitlements "Telegram Lite.entitlements")
     set(output_name "Telegram Lite")
     target_link_options(Telegram
@@ -2388,12 +2392,12 @@ if (build_macstore)
     )
 else()
     if (CMAKE_GENERATOR STREQUAL Xcode)
-        set(bundle_identifier "com.tdesktop.Telegram$<$<CONFIG:Debug>:Debug>")
+        set(bundle_identifier "xyz.nextalone.nagram.desktop$<$<CONFIG:Debug>:Debug>")
     else()
-        set(bundle_identifier "com.tdesktop.Telegram")
+        set(bundle_identifier "xyz.nextalone.nagram.desktop")
     endif()
     set(bundle_entitlements "Telegram.entitlements")
-    set(output_name "Telegram")
+    set(output_name "Nagram")
 endif()
 
 if (CMAKE_GENERATOR STREQUAL Xcode)
@@ -2619,28 +2623,28 @@ endif()
 
 if (LINUX AND DESKTOP_APP_USE_PACKAGED)
     include(GNUInstallDirs)
-    configure_file("../lib/xdg/org.telegram.desktop.service" "${CMAKE_CURRENT_BINARY_DIR}/org.telegram.desktop.service" @ONLY)
-    configure_file("../lib/xdg/org.telegram.desktop.metainfo.xml" "${CMAKE_CURRENT_BINARY_DIR}/org.telegram.desktop.metainfo.xml" @ONLY)
-    generate_appstream_changelog(Telegram "${CMAKE_SOURCE_DIR}/changelog.txt" "${CMAKE_CURRENT_BINARY_DIR}/org.telegram.desktop.metainfo.xml")
+    configure_file("../lib/xdg/xyz.nextalone.nagram.desktop.service" "${CMAKE_CURRENT_BINARY_DIR}/xyz.nextalone.nagram.desktop.service" @ONLY)
+    configure_file("../lib/xdg/xyz.nextalone.nagram.desktop.metainfo.xml" "${CMAKE_CURRENT_BINARY_DIR}/xyz.nextalone.nagram.desktop.metainfo.xml" @ONLY)
+    generate_appstream_changelog(Telegram "${CMAKE_SOURCE_DIR}/changelog.txt" "${CMAKE_CURRENT_BINARY_DIR}/xyz.nextalone.nagram.desktop.metainfo.xml")
     install(TARGETS Telegram RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" BUNDLE DESTINATION "${CMAKE_INSTALL_BINDIR}")
-    install(FILES "Resources/art/icon16.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/16x16/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon16@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/16x16@2/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon32.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/32x32/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon32@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/32x32@2/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon48.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/48x48/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon48@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/48x48@2/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon64.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon64@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64@2/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon128.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/128x128/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon128@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/128x128@2/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon256.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon256@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256@2/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon512.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/art/icon512@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512@2/apps" RENAME "org.telegram.desktop.png")
-    install(FILES "Resources/icons/tray_monochrome.svg" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/symbolic/apps" RENAME "org.telegram.desktop-symbolic.svg")
-    install(FILES "Resources/icons/tray_monochrome_attention.svg" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/symbolic/apps" RENAME "org.telegram.desktop-attention-symbolic.svg")
-    install(FILES "Resources/icons/tray_monochrome_mute.svg" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/symbolic/apps" RENAME "org.telegram.desktop-mute-symbolic.svg")
-    install(FILES "../lib/xdg/org.telegram.desktop.desktop" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications")
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.telegram.desktop.service" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/dbus-1/services")
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/org.telegram.desktop.metainfo.xml" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
+    install(FILES "Resources/art/icon16.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/16x16/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon16@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/16x16@2/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon32.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/32x32/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon32@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/32x32@2/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon48.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/48x48/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon48@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/48x48@2/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon64.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon64@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/64x64@2/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon128.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/128x128/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon128@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/128x128@2/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon256.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon256@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256@2/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon512.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/art/icon512@2x.png" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512@2/apps" RENAME "xyz.nextalone.nagram.desktop.png")
+    install(FILES "Resources/icons/tray_monochrome.svg" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/symbolic/apps" RENAME "xyz.nextalone.nagram.desktop-symbolic.svg")
+    install(FILES "Resources/icons/tray_monochrome_attention.svg" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/symbolic/apps" RENAME "xyz.nextalone.nagram.desktop-attention-symbolic.svg")
+    install(FILES "Resources/icons/tray_monochrome_mute.svg" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/symbolic/apps" RENAME "xyz.nextalone.nagram.desktop-mute-symbolic.svg")
+    install(FILES "../lib/xdg/xyz.nextalone.nagram.desktop.desktop" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/xyz.nextalone.nagram.desktop.service" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/dbus-1/services")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/xyz.nextalone.nagram.desktop.metainfo.xml" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
 endif()

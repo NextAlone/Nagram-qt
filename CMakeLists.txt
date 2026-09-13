@@ -19,8 +19,8 @@ endif()
 project(Telegram
     LANGUAGES C CXX
     VERSION ${desktop_app_version_cmake}
-    DESCRIPTION "Official Telegram Desktop messenger"
-    HOMEPAGE_URL "https://desktop.telegram.org"
+    DESCRIPTION "Nagram Desktop messenger"
+    HOMEPAGE_URL "https://github.com/NextAlone/Nagram-qt"
 )
 
 if (APPLE)
@@ -41,6 +41,13 @@ get_filename_component(cmake_helpers_loc "cmake" REALPATH)
 
 if (NOT DESKTOP_APP_USE_PACKAGED AND WIN32)
     set(Python3_EXECUTABLE ${CMAKE_CURRENT_SOURCE_DIR}/../ThirdParty/python/Scripts/python)
+endif()
+
+set(DESKTOP_APP_DISABLE_AUTOUPDATE ON CACHE BOOL "Disable upstream updates." FORCE)
+set(DESKTOP_APP_DISABLE_CRASH_REPORTS ON CACHE BOOL "Disable upstream crash reports." FORCE)
+
+if (DESKTOP_APP_SPECIAL_TARGET MATCHES "^(macstore|uwp)")
+    message(FATAL_ERROR "Nagram store distribution is not configured. Use a desktop target.")
 endif()
 
 include(cmake/variables.cmake)

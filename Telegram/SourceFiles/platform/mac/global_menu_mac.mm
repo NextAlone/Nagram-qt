@@ -194,7 +194,7 @@ void Manager::retranslate() {
 		_newChannel->setText(tr::lng_mac_menu_new_channel(tr::now));
 	}
 	if (_showTelegram) {
-		_showTelegram->setText(tr::lng_mac_menu_show(tr::now));
+		_showTelegram->setText(tr::lng_nagram_mac_menu_show(tr::now));
 	}
 	if (_fullScreen) {
 		_fullScreen->setText(tr::lng_mac_menu_fullscreen(tr::now));
@@ -355,7 +355,7 @@ void Manager::buildAppleMenu(QMenu *main) {
 			});
 		};
 		const auto about = main->addAction(
-			u"About Telegram"_q,
+			u"About Nagram"_q,
 			std::move(callback));
 		about->setMenuRole(QAction::AboutQtRole);
 	}
@@ -589,7 +589,7 @@ void Manager::buildWindowMenu(QMenu *window) {
 	}
 	window->addSeparator();
 	_showTelegram = window->addAction(
-		u"Show Telegram"_q,
+		u"Show Nagram"_q,
 		receiver,
 		[this] {
 			if (const auto w = resolveActiveWindow()) {
@@ -599,7 +599,7 @@ void Manager::buildWindowMenu(QMenu *window) {
 }
 
 void Manager::buildMenu() {
-	buildAppleMenu(_menuBar->addMenu(u"Telegram"_q));
+	buildAppleMenu(_menuBar->addMenu(u"Nagram"_q));
 	buildFileMenu(_menuBar->addMenu(u"File"_q));
 	buildEditMenu(_menuBar->addMenu(u"Edit"_q));
 	buildWindowMenu(_menuBar->addMenu(u"Window"_q));
