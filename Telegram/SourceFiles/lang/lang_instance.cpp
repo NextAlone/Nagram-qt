@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "lang/lang_instance.h"
+#include "nagram/nagram_text.h"
 
 #include "core/application.h"
 #include "storage/serialize_common.h"
@@ -214,6 +215,48 @@ void ParseKeyValue(
 	}
 }
 
+std::map<ushort, QString> LoadNagramDefaults(const QString &path) {
+	auto result = std::map<ushort, QString>();
+	const auto content = FileParser::ReadFile(path, path);
+	FileParser parser(content, [&](QLatin1String key, const QByteArray &value) {
+		const auto name = QByteArray(key.data(), key.size());
+		if (name.startsWith("lng_nagram_")) {
+			ParseKeyValue(name, value, [&](ushort index, QString &&parsed) {
+				result[index] = std::move(parsed);
+			});
+		}
+	});
+	if (!parser.errors().isEmpty()) {
+		LOG(("Lang Error: Invalid bundled Nagram translations: %1 (%2)"
+			).arg(path, parser.errors()));
+	}
+	return result;
+}
+
+const std::map<ushort, QString> &NagramDefaults(const QString &language) {
+	auto parts = language.toLower().replace(u'_', u'-').split(u'-');
+	if (parts.size() > 1 && parts[1].size() == 4) {
+		parts[1][0] = parts[1][0].toUpper();
+	}
+	const auto locale = QLocale(parts.join(u'-'));
+	static const auto empty = std::map<ushort, QString>();
+	if (locale.language() != QLocale::Chinese) {
+		return empty;
+	} else if (locale.script() == QLocale::TraditionalHanScript) {
+		static const auto traditional = LoadNagramDefaults(
+			u":/langs/nagram/zh-hant.strings"_q);
+		return traditional;
+	}
+	static const auto simplified = LoadNagramDefaults(
+		u":/langs/nagram/zh-hans.strings"_q);
+	return simplified;
+}
+
+bool IsChineseLanguageId(const QString &id) {
+	const auto normalized = id.toLower().replace(u'_', u'-');
+	return normalized == u"zh"_q || normalized.startsWith(u"zh-"_q);
+}
+
 } // namespace
 
 QString CloudLangPackName() {
@@ -299,6 +342,7 @@ void Instance::reset(const Language &data) {
 		_values[i] = GetOriginalValue(ushort(i));
 	}
 	ranges::fill(_nonDefaultSet, 0);
+	applyNagramDefaults();
 	updateChoosingStickerReplacement();
 
 	_idChanges.fire_copy(_id);
@@ -544,6 +588,7 @@ void Instance::fillFromSerialized(
 	for (auto i = 0, count = nonDefaultValuesCount * 2; i != count; i += 2) {
 		applyValue(nonDefaultStrings[i], nonDefaultStrings[i + 1]);
 	}
+	applyNagramDefaults();
 	updatePluralRules();
 	updateChoosingStickerReplacement();
 
@@ -570,6 +615,7 @@ void Instance::fillFromCustomContent(
 	_pluralId = PluralCodeForCustom(absolutePath, relativePath);
 	_name = _nativeName = QString();
 	loadFromCustomContent(absolutePath, relativePath, content);
+	applyNagramDefaults();
 	updateChoosingStickerReplacement();
 
 	_idChanges.fire_copy(_id);
@@ -695,8 +741,10 @@ void Instance::applyDifferenceToMe(
 		});
 	}
 	if (!_derived) {
+		applyNagramDefaults();
 		_updated.fire({});
 	} else {
+		_derived->applyNagramDefaults();
 		_derived->_updated.fire({});
 	}
 }
@@ -717,6 +765,21 @@ std::map<ushort, QString> Instance::ParseStrings(
 		});
 	}
 	return result;
+}
+
+QString Instance::getValue(ushort key) const {
+	Expects(key < _values.size());
+	return _narrowInterfaceSymbols
+		? Nagram::NarrowInterfaceSymbols(_values[key])
+		: _values[key];
+}
+
+void Instance::setNarrowInterfaceSymbols(bool enabled) {
+	if (_narrowInterfaceSymbols == enabled) {
+		return;
+	}
+	_narrowInterfaceSymbols = enabled;
+	_updated.fire({});
 }
 
 QString Instance::getNonDefaultValue(const QByteArray &key) const {
@@ -746,6 +809,24 @@ void Instance::applyValue(const QByteArray &key, const QByteArray &value) {
 			}
 		}
 	});
+}
+
+void Instance::applyNagramDefaults() {
+	if (_derived) {
+		return;
+	}
+	auto language = isCustom() ? _pluralId : _id;
+	if (!IsChineseLanguageId(language)) {
+		language = baseId();
+	}
+	if (!IsChineseLanguageId(language)) {
+		return;
+	}
+	for (const auto &[key, value] : NagramDefaults(language)) {
+		if (!_nonDefaultSet[key] && (!_base || !_base->_nonDefaultSet[key])) {
+			_values[key] = value;
+		}
+	}
 }
 
 void Instance::updatePluralRules() {

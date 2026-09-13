@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_top_bar.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "api/api_peer_colors.h"
 #include "api/api_peer_photo.h"
 #include "api/api_user_privacy.h"
@@ -3415,6 +3417,9 @@ void TopBar::paintAnimatedPattern(
 
 void TopBar::setupPinnedToTopGifts(
 		not_null<Window::SessionController*> controller) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideProfileGifts)) {
+		return;
+	}
 	const auto requestDone = crl::guard(this, [=](
 			std::vector<Data::SavedStarGift> gifts) {
 		const auto shouldHideFirst = _pinnedToTopGiftsFirstTimeShowed

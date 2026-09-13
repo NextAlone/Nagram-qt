@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/view/media_view_overlay_widget.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "apiwrap.h"
 #include "api/api_attached_stickers.h"
 #include "api/api_peer_photo.h"
@@ -19,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/premium_preview_box.h"
 #include "calls/calls_instance.h"
 #include "core/application.h"
+#include "core/core_screenshot_protection.h"
 #include "core/click_handler_types.h"
 #include "core/file_utilities.h"
 #include "core/mime_type.h"
@@ -918,7 +921,13 @@ OverlayWidget::OverlayWidget()
 	// everything set on the old one. Reapply on every handle change.
 	_window->winIdValue(
 	) | rpl::on_next([=] {
-		Platform::SetWindowScreenshotProtection(_window, _screenshotProtected);
+		Platform::SetWindowScreenshotProtection(_window,
+			_screenshotProtected || Core::App().screenshotProtection().active());
+	}, lifetime());
+
+	Core::App().screenshotProtection().activeValue(
+	) | rpl::on_next([=](bool active) {
+		Platform::SetWindowScreenshotProtection(_window, active || _screenshotProtected);
 	}, lifetime());
 
 	_window->screenValue(
@@ -1475,7 +1484,9 @@ QSize OverlayWidget::videoSize() const {
 bool OverlayWidget::streamingRequiresControls() const {
 	return !_stories
 		&& _document
-		&& (!_document->isAnimation() || _document->isVideoMessage());
+		&& (!_document->isAnimation() || _document->isVideoMessage()
+			|| Nagram::Get(Core::App().settings(),
+				Nagram::Option::GifPlaybackControls));
 }
 
 QImage OverlayWidget::videoFrame() const {
@@ -6063,7 +6074,8 @@ bool OverlayWidget::contentNeedsScreenshotProtection() const {
 
 void OverlayWidget::refreshScreenshotProtection() {
 	_screenshotProtected = contentNeedsScreenshotProtection();
-	Platform::SetWindowScreenshotProtection(_window, _screenshotProtected);
+	Platform::SetWindowScreenshotProtection(_window,
+			_screenshotProtected || Core::App().screenshotProtection().active());
 }
 
 void OverlayWidget::refreshSystemMediaControls() {

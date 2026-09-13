@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/compose_ai_box.h"
 
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_system_ai.h"
+
 #include "api/api_compose_with_ai.h"
 #include "apiwrap.h"
 #include "boxes/create_ai_tone_box.h"
@@ -2609,7 +2612,12 @@ void ComposeAiBox(not_null<Ui::GenericBox*> box, ComposeAiBoxArgs &&args) {
 void ShowComposeAiBox(
 		std::shared_ptr<Ui::Show> show,
 		ComposeAiBoxArgs &&args) {
-	show->show(Box(ComposeAiBox, std::move(args)));
+	if (args.canApply && Nagram::Get(
+			Core::App().settings(), Nagram::Option::PreferSystemAi)) {
+		Nagram::ShowSystemAi(std::move(show), std::move(args));
+	} else {
+		show->show(Box(ComposeAiBox, std::move(args)));
+	}
 }
 
 } // namespace HistoryView::Controls

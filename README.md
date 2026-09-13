@@ -5,9 +5,13 @@
 Nagram Desktop is an independent Telegram client built with Qt, based on
 [Telegram Desktop](https://github.com/telegramdesktop/tdesktop).
 
-This repository currently includes Nagram branding, application icons and the
-foundation for Nagram Settings. Configuration keys are reserved for incremental
-feature work; **the planned enhancements are not active yet**.
+This repository includes Nagram branding, application icons and Nagram Settings
+with profile IDs, profile photo data centers, private-call confirmation and
+Telegram's per-account phone-number spoiler. Chat preferences include timestamp
+seconds, original forwarding dates, wider channel text posts, story/reaction
+visibility, scroll navigation, recording controls, sticker timestamps, video
+autoplay and private-chat activity indicators. Unimplemented keys remain reserved
+and are not exposed as usable settings.
 
 - [Configuration design](docs/nagram-settings.md)
 - [Brand assets and application identity](BRANDING.md)

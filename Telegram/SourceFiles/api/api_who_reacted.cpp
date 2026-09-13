@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "api/api_who_reacted.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "api/api_global_privacy.h"
 #include "history/history_item.h"
 #include "history/history.h"
@@ -726,6 +729,9 @@ QString FormatReadDate(TimeId date, const QDateTime &now) {
 }
 
 bool WhoReadExists(not_null<HistoryItem*> item) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideReadTime)) {
+		return false;
+	}
 	if (!item->out()) {
 		return false;
 	}

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "chat_helpers/emoji_list_widget.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "window/window_media_preview.h"
 #include "api/api_peer_photo.h"
 #include "apiwrap.h"
@@ -609,7 +611,8 @@ EmojiListWidget::EmojiListWidget(
 
 	rpl::combine(
 		Data::AmPremiumValue(&session()),
-		session().premiumPossibleValue()
+		session().premiumPossibleValue(),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideFeaturedEmoji)
 	) | rpl::skip(1) | rpl::on_next([=] {
 		refreshCustom();
 		resizeToWidth(width());
@@ -3630,8 +3633,10 @@ void EmojiListWidget::refreshCustom() {
 	for (const auto setId : owner->stickers().emojiSetsOrder()) {
 		push(setId, true);
 	}
-	for (const auto setId : owner->stickers().featuredEmojiSetsOrder()) {
-		push(setId, false);
+	if (!Nagram::Get(Core::App().settings(), Nagram::Option::HideFeaturedEmoji)) {
+		for (const auto setId : owner->stickers().featuredEmojiSetsOrder()) {
+			push(setId, false);
+		}
 	}
 	refreshMegagroupStickers(push, GroupStickersPlace::Hidden);
 

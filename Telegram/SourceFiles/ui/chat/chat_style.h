@@ -38,6 +38,7 @@ namespace Ui {
 
 class ChatTheme;
 class ChatStyle;
+void SetSimpleQuotes(bool enabled);
 struct BubblePattern;
 
 inline constexpr auto kColorPatternsCount = Text::kMaxQuoteOutlines;
@@ -279,6 +280,7 @@ struct ChatPaintContext {
 	};
 	SkipDrawingParts skipDrawingParts = SkipDrawingParts::None;
 
+	std::optional<bool> simpleQuotes;
 	bool skipSelectionCheck = false;
 	bool outbg = false;
 	bool paused = false;
@@ -340,6 +342,8 @@ public:
 
 	void apply(not_null<ChatTheme*> theme);
 	void applyCustomPalette(const style::palette *palette);
+	void setSimpleQuotes(std::optional<bool> enabled) { _simpleQuotes = enabled; }
+	[[nodiscard]] bool simpleQuotes() const;
 	void applyAdjustedServiceBg(QColor serviceBg);
 
 	[[nodiscard]] bool dark() const {
@@ -751,6 +755,7 @@ private:
 	ColorIndicesCompressed _colorIndices;
 
 	bool _dark = false;
+	std::optional<bool> _simpleQuotes;
 	int _paletteVersion = 0;
 
 	rpl::event_stream<> _paletteChanged;

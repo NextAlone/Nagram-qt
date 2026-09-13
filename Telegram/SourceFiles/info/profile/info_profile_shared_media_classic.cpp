@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_shared_media_classic.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "core/ui_integration.h"
 #include "data/components/recent_shared_media_gifts.h"
 #include "data/data_channel.h"
@@ -342,7 +345,9 @@ object_ptr<Ui::SlideWrap<Ui::RpWidget>> SetupSharedMediaClassic(
 
 	if (!topic) {
 		addStoriesButton(peer, st::infoIconMediaStories);
-		addPeerGiftsButton(peer, st::infoIconMediaGifts);
+		if (!Nagram::Get(Core::App().settings(), Nagram::Option::HideProfileGifts)) {
+			addPeerGiftsButton(peer, st::infoIconMediaGifts);
+		}
 		addSavedSublistButton(peer, st::infoIconMediaSaved);
 	}
 	addMediaButton(MediaType::Photo, st::infoIconMediaPhoto);

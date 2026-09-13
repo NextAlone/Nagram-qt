@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_text_helper.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "core/click_handler_types.h"
 #include "data/data_document.h"
 #include "data/data_session.h"
@@ -22,6 +25,8 @@ namespace HistoryView {
 
 void InitElementTextPart(not_null<Element*> view, Ui::Text::String &text) {
 	if (text.hasSpoilers()) {
+		text.setSpoilerRevealed(Nagram::Get(
+			Core::App().settings(), Nagram::Option::RevealSpoilers), anim::type::instant);
 		text.setSpoilerLinkFilter([weak = base::make_weak(view)](
 				const ClickContext &context) {
 			const auto button = context.button;

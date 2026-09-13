@@ -2057,7 +2057,18 @@ void SessionController::activateFirstChatsFilter() {
 		return;
 	}
 	_filtersActivated = true;
-	setActiveChatsFilter(session().data().chatsFilters().defaultId());
+	const auto &settings = session().settings();
+	const auto &filters = session().data().chatsFilters();
+	const auto preference = settings.startupChatsFilter();
+	const auto requested = (preference == Main::SessionSettings::kStartupFilterLast)
+		? settings.lastChatsFilter()
+		: preference;
+	const auto &list = filters.list();
+	const auto found = ranges::contains(list, requested, &Data::ChatFilter::id);
+	setActiveChatsFilter(found ? requested : filters.defaultId());
+	if (!found && preference != Main::SessionSettings::kStartupFilterDefault) {
+		uiShow()->showToast(tr::lng_nagram_startup_folder_missing(tr::now));
+	}
 }
 
 bool SessionController::uniqueChatsInSearchResults(
@@ -3317,6 +3328,10 @@ void SessionController::setActiveChatsFilter(
 		resetFakeUnreadWhileOpened();
 	}
 	_activeChatsFilter.force_assign(id);
+	if (_filtersActivated && session().settings().lastChatsFilter() != id) {
+		session().settings().setLastChatsFilter(id);
+		session().saveSettingsDelayed();
+	}
 	if (id || !changed) {
 		closeForum();
 		closeFolder();

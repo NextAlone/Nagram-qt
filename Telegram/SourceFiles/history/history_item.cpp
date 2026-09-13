@@ -6,6 +6,8 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_item.h"
+#include "nagram/nagram_reading.h"
+#include "nagram/nagram_filters.h"
 
 #include "api/api_premium.h"
 #include "api/api_sensitive_content.h"
@@ -3930,6 +3932,14 @@ MsgId HistoryItem::originalId() const {
 	return id;
 }
 
+void HistoryItem::setNagramOriginalShown(bool shown) {
+	if (_nagramOriginalShown == shown) {
+		return;
+	}
+	_nagramOriginalShown = shown;
+	history()->owner().requestItemViewRefresh(this);
+}
+
 const TextWithEntities &HistoryItem::originalText() const {
 	static const auto kEmpty = TextWithEntities();
 	return isService() ? kEmpty : _text;
@@ -4002,9 +4012,23 @@ bool HistoryItem::hasHiddenLinks() const {
 }
 
 TextForMimeData HistoryItem::clipboardText() const {
-	return isService()
-		? TextForMimeData()
-		: TextForMimeData::WithExpandedLinks(translatedText());
+	if (isService()) {
+		return {};
+	}
+	auto text = translatedText();
+	if (!_nagramOriginalShown) {
+		if (const auto filtered = Nagram::FilterMessage(
+				const_cast<HistoryItem*>(this))) {
+			text = Nagram::FilterProjection(*filtered).text;
+		}
+		if (!translatedRichPage()) {
+			if (const auto projection = Nagram::ProjectReading(
+					Core::App().settings(), text)) {
+				text = projection->text;
+			}
+		}
+	}
+	return TextForMimeData::WithExpandedLinks(std::move(text));
 }
 
 bool HistoryItem::changeViewsCount(int count) {

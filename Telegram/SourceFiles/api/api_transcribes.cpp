@@ -9,6 +9,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "apiwrap.h"
 #include "api/api_text_entities.h"
+#include "core/application.h"
+#include "core/core_settings.h"
 #include "data/data_channel.h"
 #include "data/data_document.h"
 #include "data/data_peer.h"
@@ -20,16 +22,45 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_app_config.h"
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
+#include "nagram/nagram_services.h"
 #include "spellcheck/spellcheck_types.h"
 
 namespace Api {
+namespace {
+
+bool ExternalTranscriptionSelected() {
+	const auto config = Nagram::Services(Core::App().settings());
+	if (!config) {
+		return true;
+	}
+	const auto id = config->value(u"transcription"_q).toString();
+	return !id.isEmpty() && id != u"telegram"_q;
+}
+
+} // namespace
 
 Transcribes::Transcribes(not_null<ApiWrap*> api)
 : _session(&api->session())
 , _api(&api->instance()) {
+	_externalConfig = Core::App().settings().readPref<QByteArray>(
+		Nagram::kServicesKey);
+	_externalSelected = ExternalTranscriptionSelected();
+	Core::App().settings().saveDelayedRequests(
+	) | rpl::on_next([=] {
+		const auto config = Core::App().settings().readPref<QByteArray>(
+			Nagram::kServicesKey);
+		if (_externalConfig != config) {
+			_externalConfig = config;
+			_externalSelected = ExternalTranscriptionSelected();
+			clearExternal();
+		}
+	}, _externalLifetime);
 }
 
 bool Transcribes::isRated(not_null<HistoryItem*> item) const {
+	if (external(item)) {
+		return true;
+	}
 	const auto fullId = item->fullId();
 	for (const auto &[transcribeId, id] : _ids) {
 		if (id == fullId) {
@@ -40,6 +71,9 @@ bool Transcribes::isRated(not_null<HistoryItem*> item) const {
 }
 
 void Transcribes::rate(not_null<HistoryItem*> item, bool isGood) {
+	if (external(item)) {
+		return;
+	}
 	const auto fullId = item->fullId();
 	for (const auto &[transcribeId, id] : _ids) {
 		if (id == fullId) {
@@ -137,9 +171,117 @@ void Transcribes::toggleSummary(not_null<HistoryItem*> item) {
 
 const Transcribes::Entry &Transcribes::entry(
 		not_null<HistoryItem*> item) const {
+	if (const auto cached = external(item)) {
+		return cached->value;
+	}
 	static auto empty = Entry();
+	if (_externalSelected) {
+		return empty;
+	}
 	const auto i = _map.find(item->fullId());
 	return (i != _map.end()) ? i->second : empty;
+}
+
+auto Transcribes::external(not_null<HistoryItem*> item) const
+-> const ExternalEntry* {
+	const auto i = _external.find(item->fullId());
+	const auto media = item->media();
+	const auto document = media ? media->document() : nullptr;
+	return (i != _external.end()
+		&& _externalSelected
+		&& document
+		&& !media->ttlSeconds()
+		&& document->id == i->second.documentId)
+		? &i->second
+		: nullptr;
+}
+
+void Transcribes::refreshExternal(FullMsgId id) {
+	if (const auto item = _session->data().message(id)) {
+		_session->data().requestItemViewRefresh(item);
+		_session->data().requestItemResize(item);
+	}
+}
+
+bool Transcribes::toggleExternal(not_null<HistoryItem*> item) {
+	if (!external(item)) {
+		return false;
+	}
+	auto &cached = _external[item->fullId()];
+	cached.value.shown = !cached.value.shown;
+	cached.accessed = ++_externalAccessed;
+	refreshExternal(item->fullId());
+	return true;
+}
+
+bool Transcribes::setExternal(
+		not_null<HistoryItem*> item,
+		DocumentId documentId,
+		const QByteArray &serviceConfig,
+		uint64 generation,
+		QString result) {
+	const auto media = item->media();
+	const auto document = media ? media->document() : nullptr;
+	constexpr auto kMaximumText = 16384;
+	if (&item->history()->session() != _session
+		|| !_externalSelected
+		|| !document
+		|| document->id != documentId
+		|| (!document->isVoiceMessage() && !document->isVideoMessage())
+		|| media->ttlSeconds()
+		|| serviceConfig != _externalConfig
+		|| generation != externalGeneration(document->isVideoMessage())
+		|| result.isEmpty()
+		|| result.size() > kMaximumText
+		|| result.contains(QChar(0))
+		|| QString::fromUtf8(result.toUtf8()) != result) {
+		return false;
+	}
+	_external[item->fullId()] = {
+		.documentId = documentId,
+		.value = {
+			.result = std::move(result),
+			.shown = true,
+			.roundview = document->isVideoMessage(),
+		},
+		.accessed = ++_externalAccessed,
+	};
+	constexpr auto kMaximumEntries = 128;
+	if (_external.size() > kMaximumEntries) {
+		const auto oldest = ranges::min_element(
+			_external,
+			ranges::less(),
+			[](const auto &entry) { return entry.second.accessed; });
+		const auto id = oldest->first;
+		_external.erase(oldest);
+		refreshExternal(id);
+	}
+	refreshExternal(item->fullId());
+	return true;
+}
+
+void Transcribes::clearExternal(std::optional<bool> round) {
+	for (auto i = 0; i != _externalGeneration.size(); ++i) {
+		if (!round || *round == bool(i)) {
+			++_externalGeneration[i];
+		}
+	}
+	auto removed = std::vector<FullMsgId>();
+	for (auto i = _external.begin(); i != _external.end();) {
+		if (!round || i->second.value.roundview == *round) {
+			removed.push_back(i->first);
+			i = _external.erase(i);
+		} else {
+			++i;
+		}
+	}
+	for (const auto id : removed) {
+		refreshExternal(id);
+	}
+}
+
+void Transcribes::removeExternal(FullMsgId id) {
+	_external.remove(id);
 }
 
 const SummaryEntry &Transcribes::summary(

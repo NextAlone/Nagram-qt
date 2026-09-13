@@ -24,6 +24,53 @@ add_subdirectory(codegen)
 get_filename_component(src_loc SourceFiles REALPATH)
 get_filename_component(res_loc Resources REALPATH)
 
+if (APPLE AND NOT DESKTOP_APP_DISABLE_SWIFT6)
+    enable_language(Swift)
+    set_target_properties(Telegram PROPERTIES LINKER_LANGUAGE CXX)
+    set(nagram_swift_deployment "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    if (NOT nagram_swift_deployment OR nagram_swift_deployment VERSION_LESS 11.0)
+        set(nagram_swift_deployment 11.0)
+    endif()
+    if (NOT CMAKE_GENERATOR STREQUAL "Xcode")
+        set(nagram_swift_arch "${CMAKE_OSX_ARCHITECTURES}")
+        if (NOT nagram_swift_arch)
+            set(nagram_swift_arch "${CMAKE_SYSTEM_PROCESSOR}")
+        endif()
+        list(LENGTH nagram_swift_arch nagram_swift_arch_count)
+        if (NOT nagram_swift_arch_count EQUAL 1)
+            message(FATAL_ERROR "Use Xcode for a universal Swift build, or select one CMAKE_OSX_ARCHITECTURES value.")
+        endif()
+    endif()
+    function(nagram_configure_swift_target target_name)
+        if (CMAKE_GENERATOR STREQUAL "Xcode")
+            set_target_properties(${target_name} PROPERTIES
+                XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET "${nagram_swift_deployment}"
+            )
+        else()
+            target_compile_options(${target_name} PRIVATE
+                "-target" "${nagram_swift_arch}-apple-macos${nagram_swift_deployment}"
+            )
+        endif()
+    endfunction()
+    nagram_configure_swift_target(lib_translate)
+    find_library(NAGRAM_FOUNDATION_MODELS FoundationModels)
+    if (NAGRAM_FOUNDATION_MODELS)
+        add_library(nagram_system_ai STATIC
+            ${src_loc}/nagram/nagram_system_ai.swift
+        )
+        set_target_properties(nagram_system_ai PROPERTIES
+            Swift_LANGUAGE_VERSION 6
+            Swift_COMPILATION_MODE wholemodule
+        )
+        nagram_configure_swift_target(nagram_system_ai)
+        target_link_options(nagram_system_ai INTERFACE
+            "SHELL:-weak_framework FoundationModels"
+        )
+        target_link_libraries(Telegram PRIVATE nagram_system_ai)
+        target_compile_definitions(Telegram PRIVATE NAGRAM_SYSTEM_AI)
+    endif()
+endif()
+
 include(cmake/telegram_options.cmake)
 include(cmake/lib_ffmpeg.cmake)
 include(cmake/lib_stripe.cmake)
@@ -1646,6 +1693,53 @@ PRIVATE
     mtproto/web_proxy/web_proxy_webview.h
     nagram/nagram_settings.cpp
     nagram/nagram_settings.h
+    nagram/nagram_config.cpp
+    nagram/nagram_config.h
+    nagram/nagram_text.cpp
+    nagram/nagram_text.h
+    nagram/nagram_menu.cpp
+    nagram/nagram_menu.h
+    nagram/nagram_services.cpp
+    nagram/nagram_services.h
+    nagram/nagram_credentials.cpp
+    nagram/nagram_credentials.h
+    nagram/nagram_service_request.cpp
+    nagram/nagram_service_request.h
+    nagram/nagram_translation.cpp
+    nagram/nagram_translation.h
+    nagram/nagram_folders.cpp
+    nagram/nagram_folders.h
+    nagram/nagram_system_ai.cpp
+    nagram/nagram_system_ai.h
+    nagram/nagram_chinese.cpp
+    nagram/nagram_reading.cpp
+    nagram/nagram_reading.h
+    nagram/nagram_snapshot.cpp
+    nagram/nagram_snapshot.h
+    nagram/nagram_batch.cpp
+    nagram/nagram_batch.h
+    nagram/nagram_links.cpp
+    nagram/nagram_links.h
+    nagram/nagram_profile.cpp
+    nagram/nagram_profile.h
+    nagram/nagram_chat_sort.cpp
+    nagram/nagram_chat_sort.h
+    nagram/nagram_main_menu.cpp
+    nagram/nagram_main_menu.h
+    nagram/nagram_stickers.cpp
+    nagram/nagram_stickers.h
+    settings/settings_nagram_links.cpp
+    settings/settings_nagram_links.h
+    nagram/nagram_filters.cpp
+    nagram/nagram_filters.h
+    settings/settings_nagram_filters.cpp
+    settings/settings_nagram_filters.h
+    nagram/nagram_service_boxes.cpp
+    nagram/nagram_service_boxes.h
+    nagram/nagram_media.cpp
+    nagram/nagram_media.h
+    nagram/nagram_sending.cpp
+    nagram/nagram_sending.h
     overview/overview_checkbox.cpp
     overview/overview_checkbox.h
     overview/overview_layout.cpp
@@ -1875,6 +1969,12 @@ PRIVATE
     settings/sections/settings_main.h
     settings/sections/settings_nagram.cpp
     settings/sections/settings_nagram.h
+    settings/settings_nagram_config.cpp
+    settings/settings_nagram_config.h
+    settings/settings_nagram_menu.cpp
+    settings/settings_nagram_menu.h
+    settings/settings_nagram_services.cpp
+    settings/settings_nagram_services.h
     settings/settings_recent_searches.cpp
     settings/settings_recent_searches.h
     settings/settings_search.cpp
@@ -2283,7 +2383,7 @@ elseif (APPLE)
         target_link_libraries(Telegram PRIVATE desktop-app::external_iconv)
     endif()
 
-    target_link_frameworks(Telegram PRIVATE CoreBluetooth)
+    target_link_frameworks(Telegram PRIVATE CoreBluetooth Security)
     target_link_frameworks_weak(Telegram PRIVATE UserNotifications)
 
     set(icons_path ${CMAKE_CURRENT_SOURCE_DIR}/Telegram/Images.xcassets)

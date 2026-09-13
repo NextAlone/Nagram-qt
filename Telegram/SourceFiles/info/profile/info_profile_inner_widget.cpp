@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_inner_widget.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "info/info_controller.h"
 #include "info/info_memento.h"
 #include "info/info_wrap_widget.h"
@@ -313,7 +316,8 @@ object_ptr<Ui::RpWidget> InnerWidget::setupContent(
 		}
 		if (!_topic && !_savedMessages) {
 			tabs.push_back(MakeStoriesTabDescriptor(tabsPeer));
-			if (!_sublist) {
+			if (!_sublist && !Nagram::Get(Core::App().settings(),
+				Nagram::Option::HideProfileGifts)) {
 				tabs.push_back(MakeGiftsTabDescriptor(_peer));
 			}
 		}

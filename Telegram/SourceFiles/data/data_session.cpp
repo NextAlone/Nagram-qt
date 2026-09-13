@@ -7,9 +7,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_session.h"
 
+#include "nagram/nagram_chat_sort.h"
+
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
 #include "main/main_app_config.h"
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_services.h"
+#include "api/api_transcribes.h"
+#include "nagram/nagram_reading.h"
 #include "apiwrap.h"
 #include "mainwidget.h"
 #include "api/api_bot.h"
@@ -374,6 +380,48 @@ Session::Session(not_null<Main::Session*> session)
 
 	const auto &unreadOnTop = base::options::lookup<bool>(
 		Dialogs::kOptionDialogsUnreadOnTop);
+	_nagramChatSort = Nagram::ChatSortOrder(Core::App().settings());
+	Core::App().settings().saveDelayedRequests()
+		| rpl::map([] {
+			return Core::App().settings().readPref<QByteArray>(Nagram::kChatSortKey);
+		}) | rpl::distinct_until_changed() | rpl::on_next([=] {
+			const auto order = Nagram::ChatSortOrder(Core::App().settings());
+			if (_nagramChatSort == order) {
+				return;
+			}
+			_nagramChatSort = order;
+			auto entries = std::vector<not_null<Dialogs::Entry*>>();
+			const auto collect = [&](not_null<Dialogs::MainList*> list) {
+				for (const auto &row : list->indexed()->all()) {
+					entries.push_back(row->entry());
+				}
+			};
+			collect(&_chatsList);
+			if (const auto archive = folderLoaded(Data::Folder::kId)) {
+				collect(archive->chatsList());
+			}
+			for (const auto entry : entries) {
+				entry->refreshNagramSortPosition();
+			}
+		}, _lifetime);
+	_session->changes().peerUpdates(
+		PeerUpdate::Flag::Rights
+	) | rpl::on_next([=](const PeerUpdate &update) {
+		if (!_session->settings().managedFolders().empty()) {
+			if (const auto history = historyLoaded(update.peer)) {
+				_chatsFilters->refreshHistory(history);
+			}
+		}
+	}, _lifetime);
+	_session->changes().peerUpdates(
+		PeerUpdate::Flag::IsContact | PeerUpdate::Flag::Notifications
+	) | rpl::on_next([=](const PeerUpdate &update) {
+		if (!_nagramChatSort.empty()) {
+			if (const auto history = historyLoaded(update.peer)) {
+				history->refreshNagramSortPosition();
+			}
+		}
+	}, _lifetime);
 	_dialogsUnreadOnTop = unreadOnTop.value();
 	unreadOnTop.changes() | rpl::on_next([=, &unreadOnTop] {
 		_dialogsUnreadOnTop = unreadOnTop.value();
@@ -405,6 +453,53 @@ Session::Session(not_null<Main::Session*> session)
 	}, _lifetime);
 
 	subscribeForTopicRepliesLists();
+	rpl::combine(
+		Nagram::Value(Core::App().settings(), Nagram::Option::SecondsInMessages),
+		Nagram::Value(
+			Core::App().settings(),
+			Nagram::Option::ShowForwardedMessageDate),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideReactions),
+		Nagram::Value(Core::App().settings(), Nagram::Option::WideChannelPosts),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideStickerTimestamp),
+		Nagram::Value(Core::App().settings(), Nagram::Option::DisableVideoAutoplay),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideQuickShare),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideEditedBadge),
+		Nagram::Value(Core::App().settings(), Nagram::Option::ExactMessageCounters),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideMessageViews),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideChannelSignature),
+		Nagram::Value(
+			Core::App().settings(),
+			Nagram::Option::DisablePremiumStickerEffects),
+		Nagram::Value(Core::App().settings(), Nagram::Option::ShowServiceTime),
+		Nagram::Value(Core::App().settings(), Nagram::Option::RevealSpoilers),
+		Nagram::EditedMarkValue(Core::App().settings()),
+		Nagram::StickerScaleValue(Core::App().settings()),
+		Nagram::MessageWidthValue(Core::App().settings()),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HidePrivateReactions),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideGroupReactions),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideChannelReactions),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideBubbleTail),
+		Nagram::Value(Core::App().settings(), Nagram::Option::SimpleQuotesAndReplies),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideReplyThumbnails),
+		Nagram::Value(Core::App().settings(), Nagram::Option::PanguOnReading),
+		_session->settings().nagramFiltersValue(),
+		rpl::single(rpl::empty) | rpl::then(
+			Core::App().settings().saveDelayedRequests()
+		) | rpl::map([] {
+			return std::make_pair(
+				Core::App().settings().readPref<QByteArray>(Nagram::kServicesKey),
+				Nagram::ReadingChinese(Core::App().settings()));
+		}) | rpl::distinct_until_changed()
+	) | rpl::skip(1) | rpl::on_next([=] {
+		auto items = std::vector<not_null<const HistoryItem*>>();
+		items.reserve(_views.size());
+		for (const auto &[item, views] : _views) {
+			items.push_back(item);
+		}
+		for (const auto item : items) {
+			requestItemViewRefresh(item);
+		}
+	}, _lifetime);
 
 	crl::on_main(_session, [=] {
 		AmPremiumValue(
@@ -1836,6 +1931,25 @@ void Session::forgetPassportCredentials() {
 }
 
 void Session::setupMigrationViewer() {
+	session().changes().peerUpdates(
+		PeerUpdate::Flag::IsBlocked
+	) | rpl::on_next([=](const PeerUpdate &update) {
+		if (_session->settings().nagramFilters().isEmpty()) {
+			return;
+		}
+		auto items = std::vector<not_null<const HistoryItem*>>();
+		for (const auto &[item, views] : _views) {
+			const auto forwarded = item->Get<HistoryMessageForwarded>();
+			if (item->from() == update.peer
+				|| item->viaBot() == update.peer
+				|| (forwarded && forwarded->originalSender == update.peer)) {
+				items.push_back(item);
+			}
+		}
+		for (const auto item : items) {
+			requestItemViewRefresh(item);
+		}
+	}, _lifetime);
 	session().changes().peerUpdates(
 		PeerUpdate::Flag::Migration
 	) | rpl::map([](const PeerUpdate &update) {
@@ -3416,6 +3530,7 @@ void Session::removeDependencyMessage(not_null<HistoryItem*> item) {
 }
 
 void Session::unregisterMessage(not_null<HistoryItem*> item) {
+	session().api().transcribes().removeExternal(item->fullId());
 	const auto peerId = item->history()->peer->id;
 	const auto itemId = item->id;
 	_itemRemoved.fire_copy(item);

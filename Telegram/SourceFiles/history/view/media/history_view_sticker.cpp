@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/media/history_view_media_common.h"
 #include "history/view/media/history_view_sticker_player.h"
 #include "lang/lang_keys.h"
+#include "nagram/nagram_settings.h"
 #include "ui/image/image.h"
 #include "ui/chat/chat_style.h"
 #include "ui/effects/path_shift_gradient.h"
@@ -137,7 +138,11 @@ Sticker::~Sticker() {
 }
 
 bool Sticker::hasPremiumEffect() const {
-	return !_skipPremiumEffect && _data->isPremiumSticker();
+	return !_skipPremiumEffect
+		&& _data->isPremiumSticker()
+		&& !Nagram::Get(
+			Core::App().settings(),
+			Nagram::Option::DisablePremiumStickerEffects);
 }
 
 bool Sticker::customEmojiPart() const {
@@ -153,8 +158,12 @@ bool Sticker::webpagePart() const {
 }
 
 void Sticker::initSize(int customSize) {
+	const auto originalSide = std::min(st::maxStickerSize, kMaxSizeFixed);
+	const auto originalBounds = (OptionStickerSize.value() > 0)
+		? Size()
+		: QSize(originalSide, originalSide);
 	if (customSize > 0) {
-		const auto original = Size(_data);
+		const auto original = DownscaledSize(_data->dimensions, originalBounds);
 		const auto proposed = QSize{ customSize, customSize };
 		_size = original.isEmpty()
 			? proposed
@@ -167,7 +176,10 @@ void Sticker::initSize(int customSize) {
 	} else {
 		_size = Size(_data);
 	}
-	_size = DownscaledSize(_size, Size());
+	_size = DownscaledSize(_size,
+		(customSize > 0 || emojiSticker() || _diceIndex >= 0)
+			? originalBounds
+			: Size());
 }
 
 QSize Sticker::countOptimalSize() {
@@ -206,7 +218,10 @@ QSize Sticker::Size() {
 			side);
 		return { scaled, scaled };
 	}
-	return { side, side };
+	const auto scaled = std::min(
+		(side * Nagram::StickerScale(Core::App().settings())) / 100,
+		kMaxSizeFixed);
+	return { scaled, scaled };
 }
 
 QSize Sticker::Size(not_null<DocumentData*> document) {

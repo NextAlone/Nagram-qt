@@ -118,6 +118,8 @@ enum class PaidPostType : uchar {
 	Ton,
 };
 
+namespace Nagram { struct FilterState; }
+
 class HistoryItem final : public RuntimeComposer<HistoryItem> {
 public:
 	[[nodiscard]] static std::unique_ptr<Data::Media> CreateMedia(
@@ -450,6 +452,11 @@ public:
 	[[nodiscard]] ItemPreview toPreview(ToPreviewOptions options) const;
 	[[nodiscard]] TextWithEntities inReplyText() const;
 	[[nodiscard]] const TextWithEntities &originalText() const;
+	[[nodiscard]] bool nagramOriginalShown() const { return _nagramOriginalShown; }
+	void setNagramOriginalShown(bool shown);
+	[[nodiscard]] std::shared_ptr<Nagram::FilterState> &nagramFilterState() {
+		return _nagramFilterState;
+	}
 	[[nodiscard]] const TextWithEntities &translatedText() const;
 	[[nodiscard]] TextWithEntities translatedTextWithLocalEntities() const;
 	[[nodiscard]] const std::vector<ClickHandlerPtr> &customTextLinks() const;
@@ -813,6 +820,8 @@ private:
 	mutable MessageFlags _flags = 0;
 
 	TextWithEntities _text;
+	bool _nagramOriginalShown = false;
+	std::shared_ptr<Nagram::FilterState> _nagramFilterState;
 
 	std::unique_ptr<Data::Media> _media;
 	std::unique_ptr<Data::MessageReactions> _reactions;

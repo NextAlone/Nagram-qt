@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/reactions/history_view_reactions_selector.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "ui/widgets/labels.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/widgets/popup_menu.h"
@@ -1439,6 +1442,11 @@ AttachSelectorResult AttachSelectorToMenu(
 		Fn<void(ChosenReaction)> chosen,
 		TextWithEntities about,
 		IconFactory iconFactory) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideReactionMenu)
+		|| (item->reactionsAreTags() && Nagram::Get(
+			Core::App().settings(), Nagram::Option::HideSavedTags))) {
+		return AttachSelectorResult::Skipped;
+	}
 	const auto result = AttachSelectorToMenu(
 		menu,
 		desiredPosition,

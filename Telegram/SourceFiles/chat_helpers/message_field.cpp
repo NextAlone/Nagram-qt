@@ -26,6 +26,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/core_settings.h"
 #include "core/ui_integration.h"
 #include "lottie/lottie_icon.h"
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_text.h"
+#include "nagram/nagram_service_boxes.h"
+#include "nagram/nagram_translation.h"
+
+#include <QtCore/QJsonArray>
 #include "info/profile/info_profile_icon.h"
 #include "ui/text/text_utilities.h"
 #include "ui/toast/toast.h"
@@ -541,6 +547,7 @@ auto InitMessageFieldHandlers(MessageFieldHandlersArgs &&args)
 	};
 	const auto field = args.field;
 	const auto session = args.session;
+	const auto show = args.show;
 	field->setTagMimeProcessor(FieldTagMimeProcessor(
 		session,
 		args.allowPremiumEmoji,
@@ -567,17 +574,87 @@ auto InitMessageFieldHandlers(MessageFieldHandlersArgs &&args)
 	}, [paused] {
 		return On(PowerSaving::kChatSpoiler) || paused();
 	});
+	field->addContextMenuHook([=](Ui::InputField::ContextMenuRequest request) {
+		if (const auto tools = Nagram::TextTools(Core::App().settings())) {
+			const auto replies = tools->value(u"quickReplies"_q).toArray();
+			for (auto i = 0; i != replies.size(); ++i) {
+				const auto text = replies[i].toString();
+				if (!text.isEmpty()) {
+					request.menu->addAction(tr::lng_nagram_quick_reply_insert(
+						tr::now, lt_index, QString::number(i + 1)), field, [=] {
+						auto cursor = field->textCursor();
+						cursor.beginEditBlock();
+						cursor.insertText(text);
+						cursor.endEditBlock();
+						field->setTextCursor(cursor);
+					});
+				}
+			}
+		}
+		if (field->empty()) {
+			return;
+		}
+		request.menu->addSeparator();
+		if (show) {
+			request.menu->addAction(tr::lng_nagram_translate_draft(tr::now), field, [=] {
+				Nagram::ShowDraftTranslation(show, field);
+			});
+		}
+		if (Nagram::ChineseConversionAvailable()) {
+			for (const auto traditional : { false, true }) {
+				request.menu->addAction(traditional
+					? tr::lng_nagram_chinese_traditional(tr::now)
+					: tr::lng_nagram_chinese_simplified(tr::now), field, [=] {
+					const auto original = field->getTextWithTags();
+					const auto converted = Nagram::ConvertChinese({
+						original.text,
+						TextUtilities::ConvertTextTagsToEntities(original.tags),
+					}, traditional);
+					if (!converted) {
+						if (show) {
+							show->showToast(tr::lng_nagram_service_response_error(tr::now));
+						}
+						return;
+					}
+					field->setTextWithTags({
+						converted->text,
+						TextUtilities::ConvertEntitiesToTextTags(converted->entities),
+					});
+				});
+			}
+		}
+		request.menu->addAction(tr::lng_nagram_spacing_draft(tr::now), field, [=] {
+			const auto original = field->getTextWithTags();
+			const auto spaced = Nagram::AddTextSpacing({
+				original.text,
+				TextUtilities::ConvertTextTagsToEntities(original.tags),
+			});
+			if (spaced.text != original.text) {
+				field->setTextWithTags({
+					spaced.text,
+					TextUtilities::ConvertEntitiesToTextTags(spaced.entities),
+				});
+			}
+		});
+	});
+
 	field->setInstantReplaces(Ui::InstantReplaces::Default());
 	field->setInstantReplacesEnabled(
 		Core::App().settings().replaceEmojiValue(),
 		Core::App().settings().systemTextReplaceValue());
-	field->setMarkdownReplacesEnabled(rpl::single(Ui::MarkdownEnabledState{
-		Ui::MarkdownEnabled{
-			std::move(args.allowMarkdownTags),
-			args.allowTypedMarkdown,
-			args.instantMarkdown
-		}
-	}));
+	field->setMarkdownReplacesEnabled(
+		Nagram::Value(Core::App().settings(), Nagram::Option::DisableMarkdown)
+		| rpl::map([
+			tags = std::move(args.allowMarkdownTags),
+			typed = args.allowTypedMarkdown,
+			instant = args.instantMarkdown
+		](bool disabled) {
+			return Ui::MarkdownEnabledState{ Ui::MarkdownEnabled{
+				tags,
+				typed && !disabled,
+				instant && !disabled,
+			} };
+		}));
 	if (const auto &show = args.show) {
 		field->setEditLinkCallback(
 			DefaultEditLinkCallback(

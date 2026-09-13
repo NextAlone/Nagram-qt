@@ -46,6 +46,10 @@ rpl::producer<not_null<PeerData*>> MigratedOrMeValue(
 	not_null<PeerData*> peer);
 
 [[nodiscard]] rpl::producer<QString> NameValue(not_null<PeerData*> peer);
+[[nodiscard]] rpl::producer<TextWithEntities> ProfileIdValue(
+	not_null<PeerData*> peer);
+[[nodiscard]] rpl::producer<TextWithEntities> ProfilePhotoDcValue(
+	not_null<PeerData*> peer);
 [[nodiscard]] rpl::producer<QString> TitleValue(
 	not_null<Data::ForumTopic*> topic);
 [[nodiscard]] rpl::producer<DocumentId> IconIdValue(

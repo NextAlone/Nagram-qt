@@ -275,7 +275,8 @@ public:
 	void saveStickerSets(
 		const Data::StickersSetsOrder &localOrder,
 		const Data::StickersSetsOrder &localRemoved,
-		Data::StickersType type);
+		Data::StickersType type,
+		Fn<void(bool)> done = nullptr);
 	void updateStickers();
 	void updateSavedGifs();
 	void updateMasks();

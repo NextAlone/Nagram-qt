@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/ui/dialogs_layout.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "base/options.h"
 #include "base/unixtime.h"
 #include "core/ui_integration.h"
@@ -470,6 +473,28 @@ void PaintRow(
 		: context.selected
 		? st::dialogsBgOver
 		: context.currentBg;
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::PresentationMode)) {
+		p.fillRect(geometry, bg);
+		EmptyUserpic::PaintHiddenAuthor(
+			p,
+			context.st->padding.left(),
+			context.st->padding.top(),
+			context.width,
+			context.st->photoSize);
+		if (!context.narrow) {
+			p.setFont(st::semiboldFont);
+			p.setPen(context.active ? st::dialogsNameFgActive : st::dialogsNameFg);
+			p.drawTextLeft(
+				context.st->nameLeft,
+				context.st->nameTop,
+				context.width,
+				st::semiboldFont->elided(
+					tr::lng_nagram_private_chat(tr::now),
+					context.width - context.st->nameLeft
+						- context.st->padding.right()));
+		}
+		return;
+	}
 	auto swipeTranslation = 0.;
 	auto swipeMirrored = false;
 	if (history
@@ -606,7 +631,15 @@ void PaintRow(
 		}
 	}
 	auto texttop = context.st->textTop;
-	if (const auto folder = entry->asFolder()) {
+	const auto hidePreview = Nagram::Get(
+		Core::App().settings(), Nagram::Option::HideSavedAndArchivedPreviews)
+		&& (entry->asFolder() || (history && history->peer->isSelf()));
+	if (hidePreview) {
+		if (history) {
+			PaintDialogDate(p, entry, fakeRow, date, rectForName, context);
+		}
+		PaintWideCounter(p, context, badgesState, texttop, namewidth, false);
+	} else if (const auto folder = entry->asFolder()) {
 		const auto availableWidth = PaintWideCounter(
 			p,
 			context,
@@ -1210,6 +1243,14 @@ void RowPainter::Paint(
 			texttop,
 			availableWidth,
 			st::dialogsTextFont->height);
+		const auto multiline = (context.st == &st::twoLineDialogRow)
+			|| (context.st == &st::threeLineDialogRow)
+			|| (context.st == &st::compactTwoLineDialogRow)
+			|| (context.st == &st::compactThreeLineDialogRow);
+		if (multiline) {
+			rect.setHeight(st::dialogsTextFont->height
+				* Nagram::ChatPreviewLines(Core::App().settings()));
+		}
 		const auto actionWasPainted = ShowSendActionInDialogs(thread)
 			? thread->sendActionPainter()->paint(
 				p,
@@ -1418,7 +1459,19 @@ void PaintCollapsedRow(
 
 	row.paintRipple(p, 0, 0, context.width);
 
+	const auto presentation = Nagram::Get(
+		Core::App().settings(), Nagram::Option::PresentationMode);
+	const auto label = presentation ? tr::lng_nagram_private_chat(tr::now) : text;
 	const auto unreadTop = (st::dialogsImportantBarHeight - st::dialogsUnreadHeight) / 2;
+	if (presentation && context.narrow) {
+		EmptyUserpic::PaintHiddenAuthor(
+			p,
+			(context.width - st::dialogsUnreadHeight) / 2,
+			unreadTop,
+			context.width,
+			st::dialogsUnreadHeight);
+		return;
+	}
 	if (!context.narrow || !folder) {
 		p.setFont(st::semiboldFont);
 		p.setPen(st::dialogsNameFg);
@@ -1427,10 +1480,10 @@ void PaintCollapsedRow(
 			+ (st::dialogsUnreadHeight - st::dialogsUnreadFont->height) / 2
 			+ st::dialogsUnreadFont->ascent;
 		const auto left = context.narrow
-			? ((context.width - st::semiboldFont->width(text)) / 2)
+			? ((context.width - st::semiboldFont->width(label)) / 2)
 			: st::dialogsTopBarLeftPadding;
 			// : context.st->padding.left();
-		p.drawText(left, textBaseline, text);
+		p.drawText(left, textBaseline, label);
 	} else {
 		folder->paintUserpic(
 			p,
@@ -1438,7 +1491,7 @@ void PaintCollapsedRow(
 			unreadTop,
 			st::dialogsUnreadHeight);
 	}
-	if (!context.narrow && unread) {
+	if (!presentation && !context.narrow && unread) {
 		const auto unreadRight = context.width - context.st->padding.right();
 		UnreadBadgeStyle st;
 		st.muted = true;

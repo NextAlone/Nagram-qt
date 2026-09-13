@@ -34,6 +34,51 @@ public:
 	[[nodiscard]] QByteArray serialize() const;
 	void addFromSerialized(const QByteArray &serialized);
 
+	static constexpr auto kStartupFilterDefault = FilterId(-2);
+	static constexpr auto kStartupFilterLast = FilterId(-1);
+	[[nodiscard]] FilterId startupChatsFilter() const {
+		return _startupChatsFilter.current();
+	}
+	[[nodiscard]] rpl::producer<FilterId> startupChatsFilterValue() const {
+		return _startupChatsFilter.value();
+	}
+	void setStartupChatsFilter(FilterId value) {
+		Expects(value >= kStartupFilterDefault);
+		_startupChatsFilter = value;
+	}
+	[[nodiscard]] FilterId lastChatsFilter() const {
+		return _lastChatsFilter;
+	}
+	void setLastChatsFilter(FilterId value) {
+		Expects(value >= 0);
+		_lastChatsFilter = value;
+	}
+
+	[[nodiscard]] const QByteArray &nagramFilters() const {
+		return _nagramFilters.current();
+	}
+	[[nodiscard]] rpl::producer<QByteArray> nagramFiltersValue() const {
+		return _nagramFilters.value();
+	}
+	void setNagramFilters(QByteArray value) {
+		_nagramFilters = std::move(value);
+	}
+	[[nodiscard]] const base::flat_map<PeerId, QString> &localAliases() const {
+		return _localAliases;
+	}
+	[[nodiscard]] bool localAliasesValid() const {
+		return _localAliasesValid;
+	}
+	[[nodiscard]] bool setLocalAliases(QByteArray serialized);
+
+	[[nodiscard]] const base::flat_set<FilterId> &managedFolders() const {
+		return _managedFolders;
+	}
+	[[nodiscard]] bool managedFoldersValid() const {
+		return _managedFoldersValid;
+	}
+	bool setManagedFolders(QByteArray serialized);
+
 	void setSupportSwitch(Support::SwitchSettings value) {
 		_supportSwitch = value;
 	}
@@ -250,6 +295,15 @@ private:
 	rpl::variable<bool> _phoneNumberHidden = false;
 
 	std::vector<Data::ReactionId> _extraFavoriteReactions;
+	rpl::variable<QByteArray> _nagramFilters;
+	rpl::variable<FilterId> _startupChatsFilter = kStartupFilterDefault;
+	FilterId _lastChatsFilter = 0;
+	QByteArray _localAliasesSerialized;
+	base::flat_map<PeerId, QString> _localAliases;
+	bool _localAliasesValid = true;
+	bool _managedFoldersValid = true;
+	QByteArray _managedFoldersSerialized;
+	base::flat_set<FilterId> _managedFolders;
 
 };
 

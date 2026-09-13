@@ -43,6 +43,18 @@ public:
 
 	void toggle(not_null<HistoryItem*> item);
 	[[nodiscard]] const Entry &entry(not_null<HistoryItem*> item) const;
+	[[nodiscard]] bool toggleExternal(not_null<HistoryItem*> item);
+	[[nodiscard]] bool setExternal(
+		not_null<HistoryItem*> item,
+		DocumentId documentId,
+		const QByteArray &serviceConfig,
+		uint64 generation,
+		QString result);
+	[[nodiscard]] uint64 externalGeneration(bool round) const {
+		return _externalGeneration[round ? 1 : 0];
+	}
+	void clearExternal(std::optional<bool> round = std::nullopt);
+	void removeExternal(FullMsgId id);
 
 	void toggleSummary(not_null<HistoryItem*> item);
 	[[nodiscard]] const SummaryEntry &summary(
@@ -61,6 +73,14 @@ public:
 	[[nodiscard]] crl::time trialsMaxLengthMs() const;
 
 private:
+	struct ExternalEntry {
+		DocumentId documentId = 0;
+		Entry value;
+		uint64 accessed = 0;
+	};
+	[[nodiscard]] const ExternalEntry *external(
+		not_null<HistoryItem*> item) const;
+	void refreshExternal(FullMsgId id);
 	void load(not_null<HistoryItem*> item);
 	void summarize(not_null<HistoryItem*> item);
 
@@ -73,6 +93,12 @@ private:
 
 	base::flat_map<FullMsgId, Entry> _map;
 	base::flat_map<uint64, FullMsgId> _ids;
+	base::flat_map<FullMsgId, ExternalEntry> _external;
+	QByteArray _externalConfig;
+	uint64 _externalAccessed = 0;
+	std::array<uint64, 2> _externalGeneration = {};
+	bool _externalSelected = false;
+	rpl::lifetime _externalLifetime;
 
 	base::flat_map<FullMsgId, SummaryEntry> _summaries;
 

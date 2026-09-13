@@ -314,7 +314,8 @@ public:
 	bool sendExistingDocument(
 		not_null<DocumentData*> document,
 		Api::MessageToSend messageToSend,
-		std::optional<MsgId> localId = std::nullopt);
+		std::optional<MsgId> localId = std::nullopt,
+		bool confirmed = false);
 	bool sendExistingPhoto(
 		not_null<PhotoData*> photo,
 		Api::SendOptions options);
@@ -647,7 +648,9 @@ private:
 	void requestSponsoredMessageBar();
 	void createSponsoredMessageBar();
 
-	void sendInlineResult(InlineBots::ResultSelected result);
+	void sendInlineResult(
+		InlineBots::ResultSelected result,
+		bool confirmed = false);
 
 	void drawField(Painter &p, const QRect &rect);
 	void paintEditHeader(

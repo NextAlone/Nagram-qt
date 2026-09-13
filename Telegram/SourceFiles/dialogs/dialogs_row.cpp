@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/dialogs_row.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "ui/chat/chat_theme.h" // CountAverageColor.
 #include "ui/color_contrast.h"
 #include "ui/effects/credits_graphics.h"
@@ -410,10 +413,19 @@ const style::DialogRow &Row::ComputeSt(
 		const auto hasTags = entry->hasChatsFilterTags(filterId);
 		const auto wideRow = history->peer->displayAsForum()
 			|| history->amMonoforumAdmin();
+		const auto compact = Nagram::Get(
+			Core::App().settings(), Nagram::Option::CompactChatList);
+		const auto lines = Nagram::ChatPreviewLines(Core::App().settings());
 		return wideRow
 			? (hasTags ? st::taggedForumDialogRow : st::forumDialogRow)
 			: hasTags
 			? st::taggedDialogRow
+			: (lines == 3)
+			? (compact ? st::compactThreeLineDialogRow : st::threeLineDialogRow)
+			: (lines == 2)
+			? (compact ? st::compactTwoLineDialogRow : st::twoLineDialogRow)
+			: compact
+			? st::compactDialogRow
 			: st::defaultDialogRow;
 	} else if (entry->asTopic()) {
 		return st::forumTopicRow;
@@ -431,8 +443,9 @@ void Row::recountHeight(float64 narrowRatio, FilterId filterId) {
 			narrowRatio);
 }
 
-uint64 Row::sortKey(FilterId filterId) const {
-	return _id.entry()->sortKeyInChatList(filterId);
+std::pair<uint8, uint64> Row::sortKey(FilterId filterId) const {
+	const auto entry = _id.entry();
+	return { entry->nagramSortPriority(filterId), entry->sortKeyInChatList(filterId) };
 }
 
 void Row::setCornerBadgeShown(
@@ -569,7 +582,10 @@ void Row::PaintCornerBadgeFrame(
 				segments.push_back({ storiesUnreadBrush, storiesUnread });
 			}
 		}
-		if (peer && (peer->forum() || peer->monoforum())) {
+		const auto shape = peer ? peer->userpicShape() : Ui::PeerUserpicShape::Circle;
+		if (const auto radius = Ui::CustomAvatarRadius(photoSize, shape)) {
+			Ui::PaintOutlineSegments(q, outline, *radius, segments);
+		} else if (peer && (peer->forum() || peer->monoforum())) {
 			const auto radius = context.st->photoSize
 				* Ui::ForumUserpicRadiusMultiplier();
 			Ui::PaintOutlineSegments(q, outline, radius, segments);
@@ -688,12 +704,10 @@ void Row::PaintCornerBadgeFrame(
 	q.setBrush(data->active
 		? st::dialogsOnlineBadgeFgActive
 		: st::dialogsOnlineBadgeFg);
-	q.drawEllipse(QRectF(
-		photoSize - skip.x() - size,
-		photoSize - skip.y() - size,
-		size,
-		size
-	).marginsRemoved({ shrink, shrink, shrink, shrink }));
+	const auto badge = Ui::CustomAvatarBadgeRect(photoSize, size, stroke,
+		peer ? peer->userpicShape() : Ui::PeerUserpicShape::Circle).value_or(
+		QRect(photoSize - skip.x() - size, photoSize - skip.y() - size, size, size));
+	q.drawEllipse(QRectF(badge).marginsRemoved({ shrink, shrink, shrink, shrink }));
 }
 
 void Row::paintUserpic(
@@ -865,13 +879,17 @@ void Row::paintUserpic(
 		: st::dialogsBg;
 	const auto size = st::dialogsCallBadgeSize;
 	const auto skip = st::dialogsCallBadgeSkip;
+	const auto photoSize = context.st->photoSize;
+	const auto badge = Ui::CustomAvatarBadgeRect(
+		photoSize, size, st::dialogsOnlineBadgeStroke, peer->userpicShape()).value_or(
+		QRect(photoSize - skip.x() - size, photoSize - skip.y() - size, size, size));
 	p.setOpacity(
 		_cornerBadgeUserpic->layersManager.progressForLayer(kTopLayer));
 	p.translate(context.st->padding.left(), context.st->padding.top());
 	actionPainter->paintSpeaking(
 		p,
-		context.st->photoSize - skip.x() - size,
-		context.st->photoSize - skip.y() - size,
+		badge.x(),
+		badge.y(),
 		context.width,
 		bg,
 		context.now);

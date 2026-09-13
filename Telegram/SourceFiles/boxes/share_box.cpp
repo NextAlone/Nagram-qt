@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/share_box.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "api/api_premium.h"
 #include "base/call_delayed.h"
 #include "base/random.h"
@@ -1870,12 +1872,21 @@ ShareBox::SubmitCallback ShareBox::DefaultForwardCallback(
 				return thread;
 			}();
 
-			if (!comment.text.isEmpty()) {
+			const auto commentAfter = Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::ForwardBeforeComment);
+			const auto sendComment = [&] {
+				if (comment.text.isEmpty()) {
+					return;
+				}
 				auto message = Api::MessageToSend(
 					Api::SendAction(effectiveThread, options));
 				message.textWithTags = comment;
 				message.action.clearDraft = false;
 				api.sendMessage(std::move(message));
+			};
+			if (!commentAfter) {
+				sendComment();
 			}
 
 			const auto topicRootId = effectiveThread->topicRootId();
@@ -2016,6 +2027,9 @@ ShareBox::SubmitCallback ShareBox::DefaultForwardCallback(
 							const MTP::Response &) {
 						requestFail(error, requestKey);
 					});
+			}
+			if (commentAfter) {
+				sendComment();
 			}
 		}
 		if (state->requests.empty()) {

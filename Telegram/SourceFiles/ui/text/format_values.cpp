@@ -103,12 +103,30 @@ QString FormatDateTime(QDateTime date) {
 	}
 }
 
-QString FormatDateTimeSavedFrom(QDateTime dateTime) {
+QString FormatTime(QTime time, bool seconds) {
+	const auto locale = QLocale();
+	if (!seconds) {
+		return locale.toString(time, QLocale::ShortFormat);
+	}
+	auto format = locale.timeFormat(QLocale::LongFormat);
+	auto quoted = false;
+	for (auto i = 0; i < format.size();) {
+		if (format[i] == '\'') {
+			quoted = !quoted;
+		}
+		if (!quoted && format[i] == 't') {
+			format.remove(i, 1);
+		} else {
+			++i;
+		}
+	}
+	return locale.toString(time, format.trimmed());
+}
+
+QString FormatDateTimeSavedFrom(QDateTime dateTime, bool seconds) {
 	const auto current = QDate::currentDate();
 	const auto date = dateTime.date();
-	const auto timeStr = QLocale().toString(
-		dateTime.time(),
-		QLocale::ShortFormat);
+	const auto timeStr = FormatTime(dateTime.time(), seconds);
 
 	if (date == current) {
 		return tr::lng_mediaview_today(tr::now, lt_time, timeStr);

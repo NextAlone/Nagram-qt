@@ -342,6 +342,7 @@ private:
 	TextWithTags _caption;
 	bool _spoiler = false;
 	bool _forceFile = false;
+	bool _mp4FilePreview = false;
 	bool _sendLargePhotos = false;
 	std::shared_ptr<Media::Encode::Job> _animationJob;
 	bool _animationAsGif = true;

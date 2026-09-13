@@ -87,11 +87,8 @@ public:
 		return _updated.events();
 	}
 
-	QString getValue(ushort key) const {
-		Expects(key < _values.size());
-
-		return _values[key];
-	}
+	QString getValue(ushort key) const;
+	void setNarrowInterfaceSymbols(bool enabled);
 	QString getNonDefaultValue(const QByteArray &key) const;
 	bool isNonDefaultPlural(ushort key) const {
 		Expects(key + 5 < _nonDefaultSet.size());
@@ -123,6 +120,7 @@ private:
 		const QString &relativePath,
 		const QByteArray &content);
 	void updatePluralRules();
+	void applyNagramDefaults();
 	void updateChoosingStickerReplacement();
 
 	Instance *_derived = nullptr;
@@ -143,6 +141,7 @@ private:
 	} _choosingStickerReplacement;
 
 	mutable QString _systemLanguage;
+	bool _narrowInterfaceSymbols = false;
 
 	std::vector<QString> _values;
 	std::vector<uchar> _nonDefaultSet;

@@ -16,6 +16,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Ui {
 namespace {
 
+auto AvatarRoundness = 0;
+auto UniformAvatarShapes = false;
+
 constexpr auto kPeek = 0.3; // Tunable. Strip width to the left of the userpic.
 constexpr auto kCover = 0.5; // Tunable. How far the image reaches into the userpic.
 constexpr auto kPivotY = 0.75; // Tunable. Rotation point, fraction of size down.
@@ -30,6 +33,40 @@ constexpr auto kCard2Opacity = 0.3; // Tunable.
 constexpr auto kGap = 0.02; // Tunable.
 
 } // namespace
+
+void SetAvatarRoundness(int percent, bool uniform) {
+	Expects(!percent || (percent >= 10 && percent <= 100));
+	AvatarRoundness = percent;
+	UniformAvatarShapes = uniform;
+}
+
+std::optional<int> CustomAvatarRadius(int size, PeerUserpicShape shape) {
+	if (!UniformAvatarShapes && (shape == PeerUserpicShape::Forum
+		|| shape == PeerUserpicShape::Monoforum)) {
+		return std::nullopt;
+	}
+	return AvatarRoundness
+		? std::make_optional(std::max(1, size * AvatarRoundness / 200))
+		: std::nullopt;
+}
+
+std::optional<QRect> CustomAvatarBadgeRect(
+		int photoSize,
+		int badgeSize,
+		int stroke,
+		PeerUserpicShape shape) {
+	const auto radius = CustomAvatarRadius(photoSize, shape);
+	if (!radius) {
+		return std::nullopt;
+	}
+	const auto diagonal = std::sqrt(0.5);
+	const auto edge = photoSize - *radius * (1. - diagonal);
+	const auto limit = stroke
+		? photoSize - badgeSize / 2. - (badgeSize + stroke) / 2. * diagonal
+		: photoSize - badgeSize;
+	const auto position = int(std::round(std::min(edge - badgeSize / 2., limit)));
+	return QRect(position, position, badgeSize, badgeSize);
+}
 
 float64 ForumUserpicRadiusMultiplier() {
 	return 0.3;
@@ -154,13 +191,20 @@ void ValidateUserpicCache(
 	view.shape = shapeValue;
 	view.paletteVersion = version;
 
+	const auto customRadius = CustomAvatarRadius(size, shape);
 	if (cloud) {
 		view.cached = cloud->scaled(
 			full,
 			Qt::IgnoreAspectRatio,
 			Qt::SmoothTransformation);
-		if (shape == PeerUserpicShape::Monoforum) {
+		if (shape == PeerUserpicShape::Monoforum && !customRadius) {
 			view.cached = Ui::ApplyMonoforumShape(std::move(view.cached));
+		} else if (customRadius && *customRadius >= size / 2) {
+			view.cached = Images::Circle(std::move(view.cached));
+		} else if (const auto radius = customRadius) {
+			view.cached = Images::Round(
+				std::move(view.cached),
+				Images::CornersMask(*radius / style::DevicePixelRatio()));
 		} else if (shape == PeerUserpicShape::Forum) {
 			view.cached = Images::Round(
 				std::move(view.cached),
@@ -177,8 +221,12 @@ void ValidateUserpicCache(
 		view.cached.fill(Qt::transparent);
 
 		auto p = QPainter(&view.cached);
-		if (shape == PeerUserpicShape::Monoforum) {
+		if (shape == PeerUserpicShape::Monoforum && !customRadius) {
 			empty->paintMonoforum(p, 0, 0, size, size);
+		} else if (customRadius && *customRadius >= size / 2) {
+			empty->paintCircle(p, 0, 0, size, size);
+		} else if (const auto radius = customRadius) {
+			empty->paintRounded(p, 0, 0, size, size, *radius);
 		} else if (shape == PeerUserpicShape::Forum) {
 			empty->paintRounded(
 				p,

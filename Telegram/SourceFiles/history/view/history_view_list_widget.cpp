@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_list_widget.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "history/view/history_view_about_view.h"
 #include "base/unixtime.h"
 #include "base/qt/qt_key_modifiers.h"
@@ -2040,6 +2042,29 @@ void ListWidget::selectItemsUpTo(not_null<HistoryItem*> item) {
 	for (const auto &i : list) {
 		changeSelectionAsGroup(_selected, i, SelectAction::Select);
 	}
+	pushSelectedItems();
+	update();
+}
+
+void ListWidget::selectLoadedAuthor(PeerId author) {
+	if (hasSelectRestriction()) {
+		return;
+	}
+	auto selected = _selected;
+	for (const auto view : _items) {
+		const auto item = view->data();
+		if (item->from()->id != author || !_delegate->listIsItemGoodForSelection(item)) {
+			continue;
+		}
+		if (!selected.contains(item->fullId()) && selected.size() >= MaxSelectedItems) {
+			controller()->showToast(tr::lng_nagram_selection_limit(tr::now));
+			return;
+		}
+		changeSelection(selected, item, SelectAction::Select);
+	}
+	clearTextSelection();
+	_selected = std::move(selected);
+	_accessibilitySelectionAnchor = nullptr;
 	pushSelectedItems();
 	update();
 }
@@ -4158,7 +4183,10 @@ void ListWidget::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 		&& _overState.pointState != PointState::Outside)
 		? _overElement->data().get()
 		: nullptr;
-	const auto attached = reactItem
+	const auto hideForSelection = Nagram::Get(
+		Core::App().settings(), Nagram::Option::HideReactionMenuWhenSelecting)
+		&& (!request.selectedItems.empty() || !request.selectedText.empty());
+	const auto attached = (reactItem && !hideForSelection)
 		? AttachSelectorToMenu(
 			_menu.get(),
 			controller(),

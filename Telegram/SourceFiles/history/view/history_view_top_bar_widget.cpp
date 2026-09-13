@@ -19,6 +19,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mainwidget.h"
 #include "mainwindow.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "mtproto/mtproto_config.h"
 #include "lang/lang_keys.h"
 #include "core/shortcuts.h"
@@ -195,6 +196,10 @@ TopBarWidget::TopBarWidget(
 	}, lifetime());
 
 	refreshUnreadBadge();
+	Nagram::Value(Core::App().settings(), Nagram::Option::HidePrivateChatActivities
+	) | rpl::skip(1) | rpl::on_next([=] {
+		update();
+	}, lifetime());
 	{
 		using AnimationUpdate = Data::SendActionManager::AnimationUpdate;
 		session().data().sendActionManager().animationUpdated(
@@ -739,7 +744,12 @@ bool TopBarWidget::paintSendAction(
 		int outerWidth,
 		style::color fg,
 		crl::time now) {
-	if (!_sendAction) {
+	if (!_sendAction
+		|| (_activeChat.key.peer()
+			&& _activeChat.key.peer()->isUser()
+			&& Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::HidePrivateChatActivities))) {
 		return false;
 	}
 	const auto seen = _emojiInteractionSeen.get();

@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/stories/media_stories_repost_view.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "chat_helpers/compose/compose_show.h"
 #include "core/ui_integration.h"
 #include "data/data_peer.h"
@@ -45,6 +48,11 @@ RepostView::RepostView(
 			_story->channelPosts().front().itemId);
 	}
 
+	Nagram::Value(Core::App().settings(), Nagram::Option::SimpleQuotesAndReplies
+	) | rpl::skip(1) | rpl::on_next([=] {
+		_controller->repaint();
+	}, _lifetime);
+
 	_story->session().colorIndicesValue(
 	) | rpl::on_next([=](Ui::ColorIndicesCompressed &&indices) {
 		_colorIndices = std::move(indices);
@@ -77,9 +85,12 @@ void RepostView::draw(Painter &p, int x, int y, int availableWidth) {
 	const auto w = _lastWidth = std::min(int(_maxWidth), availableWidth);
 	const auto h = height() - (simple ? st::normalFont->height : 0);
 	const auto rect = QRect(x, y, w, h);
-	const auto backgroundEmojiId = (!simple && _sourcePeer)
+	const auto simplified = Nagram::Get(
+		Core::App().settings(), Nagram::Option::SimpleQuotesAndReplies);
+	const auto backgroundEmojiId = (!simple && !simplified && _sourcePeer)
 		? _sourcePeer->backgroundEmojiId()
 		: DocumentId();
+	_quoteCache.bg.setAlpha(simplified ? 0 : Ui::kDefaultBgOpacity * 255);
 	const auto cache = &_quoteCache;
 	const auto &quoteSt = simple
 		? st::storiesRepostSimpleStyle

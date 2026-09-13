@@ -54,6 +54,7 @@ struct ClickHandlerContext {
 	std::shared_ptr<Ui::Show> show;
 	bool mayShowConfirmation = false;
 	bool skipBotAutoLogin = false;
+	bool skipNagramLinkRules = false;
 	bool botStartAutoSubmit = false;
 	bool ignoreIv = false;
 	bool forceExternalUrlConfirmation = false;

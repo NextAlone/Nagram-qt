@@ -715,9 +715,10 @@ void UserpicButton::paintEvent(QPaintEvent *e) {
 			.progressFg = st::historyFileThumbRadialFg,
 			.overlayFg = st::songCoverOverlayFg,
 			.cancelIcon = &st::userpicUploadCancel,
-			.roundRadius = useForumShape()
-				? (_st.photoSize * ForumUserpicRadiusMultiplier())
-				: 0.,
+			.roundRadius = double(CustomAvatarRadius(
+				_st.photoSize, resolvedShape()).value_or(
+				useForumShape()
+					? int(_st.photoSize * ForumUserpicRadiusMultiplier()) : 0)),
 		});
 	}
 }
@@ -735,23 +736,16 @@ void UserpicButton::paintUserpicFrame(Painter &p, QPoint photoPosition) {
 		auto size = QSize{ _st.photoSize, _st.photoSize };
 		const auto ratio = style::DevicePixelRatio();
 		request.outer = request.resize = size * ratio;
-		if (_shape == PeerUserpicShape::Monoforum) {
-		} else if (useForumShape()) {
-			const auto radius = int(_st.photoSize
-				* Ui::ForumUserpicRadiusMultiplier());
-			if (_roundingCorners[0].width() != radius * ratio) {
-				_roundingCorners = Images::CornersMask(radius);
-			}
-			request.rounding = Images::CornersMaskRef(_roundingCorners);
-		} else {
-			if (_ellipseMask.size() != request.outer) {
-				_ellipseMask = Images::EllipseMask(size);
-			}
-			request.mask = _ellipseMask;
+		const auto shape = resolvedShape();
+		const auto monoforum = shape == PeerUserpicShape::Monoforum
+			&& !CustomAvatarRadius(size.width(), shape);
+		if (!monoforum) {
+			PrepareAvatarFrame(request, size, shape, _roundingCorners, _ellipseMask);
 		}
+
 		auto frame = _streamed->frame(request);
 
-		if (_shape == PeerUserpicShape::Monoforum) {
+		if (monoforum) {
 			if (_monoforumMask.isNull()) {
 				_monoforumMask = MonoforumShapeMask(request.resize);
 			}
@@ -1138,7 +1132,10 @@ void UserpicButton::showCustom(QImage &&image) {
 			size * style::DevicePixelRatio(),
 			Qt::IgnoreAspectRatio,
 			Qt::SmoothTransformation);
-		_userpic = Ui::PixmapFromImage(useForumShape()
+		const auto radius = CustomAvatarRadius(_st.photoSize, resolvedShape());
+		_userpic = Ui::PixmapFromImage(radius
+			? Images::Round(std::move(small), Images::CornersMask(*radius))
+			: useForumShape()
 			? Images::Round(
 				std::move(small),
 				Images::CornersMask(_st.photoSize
@@ -1224,12 +1221,19 @@ void UserpicButton::showUploadProgress() {
 		});
 }
 
+PeerUserpicShape UserpicButton::resolvedShape() const {
+	return (_shape == PeerUserpicShape::Auto && _peer)
+		? _peer->userpicShape() : _shape;
+}
+
 void UserpicButton::fillShape(QPainter &p, QBrush brush) const {
 	PainterHighQualityEnabler hq(p);
 	p.setPen(Qt::NoPen);
 	p.setBrush(brush);
 	const auto size = _st.photoSize;
-	if (useForumShape()) {
+	if (const auto radius = CustomAvatarRadius(size, resolvedShape())) {
+		p.drawRoundedRect(0, 0, size, size, *radius, *radius);
+	} else if (useForumShape()) {
 		const auto radius = size * Ui::ForumUserpicRadiusMultiplier();
 		p.drawRoundedRect(0, 0, size, size, radius, radius);
 	} else {
@@ -1265,7 +1269,10 @@ void UserpicButton::prepareUserpicPixmap() {
 						QSize(size, size) * ratio,
 						Qt::IgnoreAspectRatio,
 						Qt::SmoothTransformation);
-					image = useForumShape()
+					const auto radius = CustomAvatarRadius(size, resolvedShape());
+					image = radius
+						? Images::Round(std::move(image), Images::CornersMask(*radius))
+						: useForumShape()
 						? Images::Round(
 							std::move(image),
 							Images::CornersMask(size
@@ -1281,7 +1288,9 @@ void UserpicButton::prepareUserpicPixmap() {
 					((user && user->isInaccessible())
 						? Ui::EmptyUserpic::InaccessibleName()
 						: _peer->name()));
-				if (useForumShape()) {
+				if (const auto radius = CustomAvatarRadius(size, resolvedShape())) {
+					empty.paintRounded(p, 0, 0, size, size, *radius);
+				} else if (useForumShape()) {
 					empty.paintRounded(
 						p,
 						0,

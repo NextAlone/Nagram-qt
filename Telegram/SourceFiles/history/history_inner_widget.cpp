@@ -90,11 +90,19 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
 #include "mainwidget.h"
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_menu.h"
+#include "nagram/nagram_reading.h"
+#include "nagram/nagram_snapshot.h"
+#include "nagram/nagram_batch.h"
+#include "settings/settings_nagram_filters.h"
+#include "nagram/nagram_media.h"
 #include "iv/editor/iv_editor_session.h"
 #include "iv/iv_rich_message_html_export.h"
 #include "menu/menu_item_download_files.h"
 #include "menu/menu_item_rate_transcribe.h"
 #include "menu/menu_item_rate_transcribe_session.h"
+#include "nagram/nagram_service_boxes.h"
 #include "menu/menu_timecode_action.h"
 #include "menu/menu_sponsored.h"
 #include "core/application.h"
@@ -2851,6 +2859,30 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 		? link->property(kPollOptionProperty).toByteArray()
 		: QByteArray();
 	const auto session = &this->session();
+	const auto hidePin = Nagram::MenuHidden(
+		Core::App().settings(),
+		Nagram::Option::HideMenuPin);
+	const auto hideReport = Nagram::MenuHidden(
+		Core::App().settings(),
+		Nagram::Option::HideMenuReport);
+	const auto hideBlock = Nagram::MenuHidden(
+		Core::App().settings(),
+		Nagram::Option::HideMenuBlock);
+	const auto hideStatistics = Nagram::MenuHidden(
+		Core::App().settings(),
+		Nagram::Option::HideMenuStatistics);
+	const auto hideCopyLink = Nagram::MenuHidden(
+		Core::App().settings(),
+		Nagram::Option::HideMenuCopyLink);
+	const auto hideForward = Nagram::MenuHidden(
+		Core::App().settings(),
+		Nagram::Option::HideMenuForward);
+	const auto hideTranslate = Nagram::MenuHidden(
+		Core::App().settings(),
+		Nagram::Option::HideMenuTranslate);
+	const auto hideSelect = Nagram::MenuHidden(
+		Core::App().settings(),
+		Nagram::Option::HideMenuSelect);
 	_whoReactedMenuLifetime.destroy();
 	if (!clickedReaction.empty() && leaderOrSelf) {
 		if (clickedReaction.paid()) {
@@ -2951,6 +2983,7 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			return;
 		}
 		const auto itemId = item->fullId();
+		Nagram::AddMediaDetailsAction(_menu.get(), controller, albumPartItem ? albumPartItem : item);
 		const auto repliesCount = item->repliesCount();
 		const auto withReplies = (repliesCount > 0);
 		const auto topicRootId = item->history()->isForum()
@@ -2987,21 +3020,26 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			: nullptr;
 		if (editItem) {
 			const auto editItemId = editItem->fullId();
-			_menu->addAction(tr::lng_context_edit_msg(tr::now), [=] {
-				if (const auto item = session->data().message(editItemId)) {
-					const auto selection = getSelectedTextRange(item);
-					if (!selection.empty()) {
-						clearSelected(true);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Edit,
+				tr::lng_context_edit_msg(tr::now),
+				[=] {
+					if (const auto item = session->data().message(editItemId)) {
+						const auto selection = getSelectedTextRange(item);
+						if (!selection.empty()) {
+							clearSelected(true);
+						}
+						if (item->richPage()
+							|| Iv::Editor::HasEditWindowFor(
+								session,
+								editItemId)) {
+							Ui::PreventDelayedActivation();
+						}
+						_widget->editMessage(item, selection);
 					}
-					if (item->richPage()
-						|| Iv::Editor::HasEditWindowFor(
-							session,
-							editItemId)) {
-						Ui::PreventDelayedActivation();
-					}
-					_widget->editMessage(item, selection);
-				}
-			}, &st::menuIconEdit);
+				},
+				&st::menuIconEdit);
 		}
 		if (session->factchecks().canEdit(item)) {
 			const auto text = item->factcheckText();
@@ -3020,20 +3058,27 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 		const auto pinItem = (item->canPin() && item->isPinned())
 			? item
 			: groupLeaderOrSelf(item);
-		if (pinItem->canPin()) {
+		if (pinItem->canPin() && !hidePin) {
 			const auto isPinned = pinItem->isPinned();
 			const auto pinItemId = pinItem->fullId();
-			_menu->addAction(isPinned ? tr::lng_context_unpin_msg(tr::now) : tr::lng_context_pin_msg(tr::now), crl::guard(controller, [=] {
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Pin,
+				isPinned ? tr::lng_context_unpin_msg(tr::now) : tr::lng_context_pin_msg(tr::now),
+				crl::guard(controller, [=] {
 				Window::ToggleMessagePinned(controller, pinItemId, !isPinned);
-			}), isPinned ? &st::menuIconUnpin : &st::menuIconPin);
+			}),
+				isPinned ? &st::menuIconUnpin : &st::menuIconPin);
 		}
-		if (canViewMessageStats(item)) {
+		if (canViewMessageStats(item) && !hideStatistics) {
 			const auto channel = _peer->asChannel();
 			auto callback = crl::guard(controller, [=] {
 				controller->showSection(
 					Info::Statistics::Make(channel, itemId, {}));
 			});
-			_menu->addAction(
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Statistics,
 				tr::lng_stats_title(tr::now),
 				std::move(callback),
 				&st::menuIconStats);
@@ -3043,12 +3088,22 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 		const auto media = photo->activeMediaView();
 		const auto itemId = item ? item->fullId() : FullMsgId();
 		if (!photo->isNull() && media && media->loaded() && !hasCopyMediaRestriction(item)) {
-			_menu->addAction(tr::lng_context_save_image(tr::now), base::fn_delayed(st::defaultDropdownMenu.menu.ripple.hideDuration, this, [=] {
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Save,
+				tr::lng_context_save_image(tr::now),
+				base::fn_delayed(st::defaultDropdownMenu.menu.ripple.hideDuration, this, [=] {
 				savePhotoToFile(photo);
-			}), &st::menuIconSaveImage);
-			_menu->addAction(tr::lng_context_copy_image(tr::now), [=] {
-				copyContextImage(photo, itemId);
-			}, &st::menuIconCopy);
+			}),
+				&st::menuIconSaveImage);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Copy,
+				tr::lng_context_copy_image(tr::now),
+				[=] {
+					copyContextImage(photo, itemId);
+				},
+				&st::menuIconCopy);
 		}
 		if (photo->hasAttachedStickers()) {
 			_menu->addAction(tr::lng_context_attached_stickers(tr::now), [=] {
@@ -3121,6 +3176,17 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			&& Menu::HasRateTranscribeItem(item)) {
 			rateTranscriptionItem = item;
 		}
+		if (item && Nagram::CustomTranscriptionSelected()
+			&& (document->isVoiceMessage() || document->isVideoMessage())
+			&& !HistoryView::ItemHasTtl(item)) {
+			const auto id = item->fullId();
+			const auto show = controller->uiShow();
+			_menu->addAction(tr::lng_nagram_service_transcription(tr::now), [=] {
+				if (const auto current = show->session().data().message(id)) {
+					Nagram::ShowCustomTranscription(show, current, true);
+				}
+			});
+		}
 	};
 
 #ifdef _DEBUG // Sometimes we need to save emoji to files.
@@ -3153,26 +3219,66 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 				Element::Moused())
 		) != HistoryView::PointState::GroupPart);
 	const auto addSelectMessageAction = [&](not_null<HistoryItem*> item) {
-		if (item->canBeSelected() && !hasSelectRestriction()) {
+		if (item->canBeSelected() && !hasSelectRestriction() && !hideSelect) {
 			const auto itemId = item->fullId();
-			_menu->addAction(tr::lng_context_select_msg(tr::now), [=] {
-				if (const auto item = session->data().message(itemId)) {
-					if ([[maybe_unused]] const auto view = viewByItem(item)) {
-						clearTextSelection();
-						if (asGroup) {
-							changeSelectionAsGroup(
-								&_selected,
-								item,
-								SelectAction::Select);
-						} else {
-							changeSelection(&_selected, item, SelectAction::Select);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Select,
+				tr::lng_context_select_msg(tr::now),
+				[=] {
+					if (const auto item = session->data().message(itemId)) {
+						if ([[maybe_unused]] const auto view = viewByItem(item)) {
+							clearTextSelection();
+							if (asGroup) {
+								changeSelectionAsGroup(
+									&_selected,
+									item,
+									SelectAction::Select);
+							} else {
+								changeSelection(&_selected, item, SelectAction::Select);
+							}
+							_accessibilitySelectionAnchor = nullptr;
+							repaintItem(item);
+							_widget->updateTopBarSelection();
 						}
-						_accessibilitySelectionAnchor = nullptr;
-						repaintItem(item);
-						_widget->updateTopBarSelection();
 					}
-				}
-			}, &st::menuIconSelect);
+				},
+				&st::menuIconSelect);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Select,
+				tr::lng_nagram_select_author(tr::now),
+				crl::guard(this, [=] {
+					const auto source = session->data().message(itemId);
+					if (!source || hasSelectRestriction()) {
+						return;
+					}
+					auto selected = _selected;
+					for (const auto history : { _migrated, _history.get() }) {
+						if (!history) {
+							continue;
+						}
+						for (const auto &block : history->blocks) {
+							for (const auto &view : block->messages) {
+								const auto item = view->data();
+								if (item->from() != source->from() || !item->canBeSelected()) {
+									continue;
+								}
+								if (!selected.contains(item) && selected.size() >= MaxSelectedItems) {
+									controller->showToast(tr::lng_nagram_selection_limit(tr::now));
+									return;
+								}
+								changeSelection(&selected, item, SelectAction::Select);
+							}
+						}
+					}
+					clearTextSelection();
+					_selected = std::move(selected);
+					_accessibilitySelectionAnchor = nullptr;
+					update();
+					_widget->updateTopBarSelection();
+				}),
+				&st::menuIconSelect);
 			const auto collectBetween = [=](
 					not_null<HistoryItem*> from,
 					not_null<HistoryItem*> to,
@@ -3250,7 +3356,9 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 						_widget->updateTopBarSelection();
 					}
 				};
-				_menu->addAction(
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Select,
 					tr::lng_context_select_msg_bulk(tr::now),
 					callback,
 					&st::menuIconSelect);
@@ -3277,17 +3385,22 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					Ui::Text::FixAmpersandInAction);
 			const auto replyToItem = selected.item ? selected.item : item;
 			const auto itemId = replyToItem->fullId();
-			_menu->addAction(std::move(text), [=] {
-				_widget->replyToMessage({
-					.messageId = itemId,
-					.quote = selected.highlight.quote,
-					.quoteOffset = selected.highlight.quoteOffset,
-					.todoItemId = todoListTaskId,
-				});
-				if (!selected.highlight.quote.empty()) {
-					_widget->clearSelected();
-				}
-			}, &st::menuIconReply);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Reply,
+				std::move(text),
+				[=] {
+					_widget->replyToMessage({
+						.messageId = itemId,
+						.quote = selected.highlight.quote,
+						.quoteOffset = selected.highlight.quoteOffset,
+						.todoItemId = todoListTaskId,
+					});
+					if (!selected.highlight.quote.empty()) {
+						_widget->clearSelected();
+					}
+				},
+				&st::menuIconReply);
 			const auto media = item->media();
 			const auto document = media
 				? media->document()
@@ -3311,11 +3424,16 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 	};
 
 	const auto addUnpinSelectedAction = [&] {
+		if (hidePin) {
+			return;
+		}
 		auto ids = Window::MessagesToUnpin(session, getSelectedItems());
 		if (ids.empty()) {
 			return;
 		}
-		_menu->addAction(
+		Nagram::AddOrderedMenuAction(
+			_menu.get(),
+			Nagram::MenuAction::Pin,
 			tr::lng_context_unpin_selected(tr::now),
 			crl::guard(this, [=] {
 				Window::UnpinMessages(controller, ids, crl::guard(this, [=] {
@@ -3356,23 +3474,30 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			const auto selectedText = getSelectedText();
 			if (!hasCopyRestrictionForSelected()
 				&& !selectedText.empty()) {
-				_menu->addAction(
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Copy,
 					(isUponSelected > 1
 						? tr::lng_context_copy_selected_items(tr::now)
 						: tr::lng_context_copy_selected(tr::now)),
 					[=] { copySelectedText(); },
 					&st::menuIconCopy);
 			}
-			if (item && !Ui::SkipTranslate(selectedText.rich)) {
+			if (item && !hideTranslate && !Ui::SkipTranslate(selectedText.rich)) {
 				const auto peer = item->history()->peer;
-				_menu->addAction(tr::lng_context_translate_selected({}), [=] {
-					_controller->show(Box(
-						Ui::TranslateBox,
-						peer,
-						MsgId(),
-						getSelectedText().rich,
-						hasCopyRestrictionForSelected()));
-				}, &st::menuIconTranslate);
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Translate,
+					tr::lng_context_translate_selected({}),
+					[=] {
+						_controller->show(Box(
+							Ui::TranslateBox,
+							peer,
+							MsgId(),
+							getSelectedText().rich,
+							hasCopyRestrictionForSelected()));
+					},
+					&st::menuIconTranslate);
 			}
 		}
 		addItemActions(item, item);
@@ -3385,23 +3510,41 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 		}
 		if (item
 			&& item->hasDirectLink()
+			&& !hideCopyLink
 			&& isUponSelected != 2
 			&& isUponSelected != -2
 			&& !IsAnchoredEphemeral(item)) {
-			_menu->addAction(item->history()->peer->isMegagroup() ? tr::lng_context_copy_message_link(tr::now) : tr::lng_context_copy_post_link(tr::now), [=] {
-				HistoryView::CopyPostLink(controller, itemId, HistoryView::Context::History);
-			}, &st::menuIconLink);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::CopyLink,
+				item->history()->peer->isMegagroup() ? tr::lng_context_copy_message_link(tr::now) : tr::lng_context_copy_post_link(tr::now),
+				[=] {
+					HistoryView::CopyPostLink(controller, itemId, HistoryView::Context::History);
+				},
+				&st::menuIconLink);
 		}
 		if (isUponSelected > 1) {
-			if (selectedState.count > 0 && selectedState.canForwardCount == selectedState.count) {
-				_menu->addAction(tr::lng_context_forward_selected(tr::now), [=] {
-					_widget->forwardSelected();
-				}, &st::menuIconForward);
+			if (!hideForward
+				&& selectedState.count > 0
+				&& selectedState.canForwardCount == selectedState.count) {
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Forward,
+					tr::lng_context_forward_selected(tr::now),
+					[=] {
+						_widget->forwardSelected();
+					},
+					&st::menuIconForward);
 			}
 			if (selectedState.count > 0 && selectedState.canDeleteCount == selectedState.count) {
-				_menu->addAction(tr::lng_context_delete_selected(tr::now), [=] {
-					_widget->confirmDeleteSelected();
-				}, &st::menuIconDelete);
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Delete,
+					tr::lng_context_delete_selected(tr::now),
+					[=] {
+						_widget->confirmDeleteSelected();
+					},
+					&st::menuIconDelete);
 			}
 			addUnpinSelectedAction();
 			if (selectedState.count > 0 && !hasCopyRestrictionForSelected()) {
@@ -3416,17 +3559,29 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					selectedItemsForExport(),
 					this);
 			}
-			_menu->addAction(tr::lng_context_clear_selection(tr::now), [=] {
-				_widget->clearSelected();
-			}, &st::menuIconSelect);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Select,
+				tr::lng_context_clear_selection(tr::now),
+				[=] {
+					_widget->clearSelected();
+				},
+				&st::menuIconSelect);
 		} else if (item) {
 			const auto itemId = item->fullId();
 			const auto blockSender = item->history()->peer->isRepliesChat();
 			if (isUponSelected != -2) {
-				if (item->allowsForward() && !IsAnchoredEphemeral(item)) {
-					_menu->addAction(tr::lng_context_forward_msg(tr::now), [=] {
-						forwardItem(itemId);
-					}, &st::menuIconForward);
+				if (!hideForward
+					&& item->allowsForward()
+					&& !IsAnchoredEphemeral(item)) {
+					Nagram::AddOrderedMenuAction(
+						_menu.get(),
+						Nagram::MenuAction::Forward,
+						tr::lng_context_forward_msg(tr::now),
+						[=] {
+							forwardItem(itemId);
+						},
+						&st::menuIconForward);
 				}
 				if (HistoryView::CanAddOfferToMessage(item)) {
 					_menu->addAction(tr::lng_context_add_offer(tr::now), [=] {
@@ -3438,24 +3593,34 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					if (item->isUploading()) {
 						if (item->media()
 							&& item->media()->allowsEditCaption()) {
-							_menu->addAction(
+							Nagram::AddOrderedMenuAction(
+								_menu.get(),
+								Nagram::MenuAction::Edit,
 								tr::lng_context_upload_edit_caption(tr::now),
 								[=] { editCaptionUploadLayer(item); },
 								&st::menuIconEdit);
 						}
 						_menu->addAction(tr::lng_context_cancel_upload(tr::now), callback, &st::menuIconCancel);
 					} else {
-						_menu->addAction(Ui::DeleteMessageContextAction(
+						Nagram::AddOrderedMenuAction(
+							_menu.get(),
+							Nagram::MenuAction::Delete,
+							Ui::DeleteMessageContextAction(
 							_menu->menu(),
 							callback,
 							item->ttlDestroyAt(),
 							[=] { _menu = nullptr; }));
 					}
 				}
-				if (!blockSender && item->suggestReport()) {
-					_menu->addAction(tr::lng_context_report_msg(tr::now), [=] {
-						reportItem(itemId);
-					}, &st::menuIconReport);
+				if (!hideReport && !blockSender && item->suggestReport()) {
+					Nagram::AddOrderedMenuAction(
+						_menu.get(),
+						Nagram::MenuAction::Report,
+						tr::lng_context_report_msg(tr::now),
+						[=] {
+							reportItem(itemId);
+						},
+						&st::menuIconReport);
 				}
 				HistoryView::AddEphemeralMessageActions(
 					_menu,
@@ -3466,10 +3631,15 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			if (isUponSelected != -2) {
 				HistoryView::AddEphemeralAboutAction(_menu, item);
 			}
-			if (isUponSelected != -2 && blockSender) {
-				_menu->addAction(tr::lng_profile_block_user(tr::now), [=] {
-					blockSenderItem(itemId);
-				}, &st::menuIconBlock);
+			if (!hideBlock && isUponSelected != -2 && blockSender) {
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Block,
+					tr::lng_profile_block_user(tr::now),
+					[=] {
+						blockSenderItem(itemId);
+					},
+					&st::menuIconBlock);
 			}
 		}
 	} else { // maybe cursor on some text history item?
@@ -3518,23 +3688,30 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			addReplyAction(item);
 				const auto selectedText = getSelectedText();
 			if (!hasCopyRestrictionForSelected() && !selectedText.empty()) {
-				_menu->addAction(
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Copy,
 					((isUponSelected > 1)
 						? tr::lng_context_copy_selected_items(tr::now)
 						: tr::lng_context_copy_selected(tr::now)),
 					[=] { copySelectedText(); },
 					&st::menuIconCopy);
 			}
-			if (item && !Ui::SkipTranslate(selectedText.rich)) {
+			if (item && !hideTranslate && !Ui::SkipTranslate(selectedText.rich)) {
 				const auto peer = item->history()->peer;
-				_menu->addAction(tr::lng_context_translate_selected({}), [=] {
-					_controller->show(Box(
-						Ui::TranslateBox,
-						peer,
-						MsgId(),
-						selectedText.rich,
-						hasCopyRestrictionForSelected()));
-				}, &st::menuIconTranslate);
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Translate,
+					tr::lng_context_translate_selected({}),
+					[=] {
+						_controller->show(Box(
+							Ui::TranslateBox,
+							peer,
+							MsgId(),
+							selectedText.rich,
+							hasCopyRestrictionForSelected()));
+					},
+					&st::menuIconTranslate);
 			}
 			const auto editItem = [&]() -> HistoryItem* {
 				const auto view = (item && item->groupId())
@@ -3578,9 +3755,14 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 							}, isFaved ? &st::menuIconUnfave : &st::menuIconFave);
 						}
 						if (!hasCopyMediaRestriction(item)) {
-							_menu->addAction(tr::lng_context_save_image(tr::now), base::fn_delayed(st::defaultDropdownMenu.menu.ripple.hideDuration, this, [=] {
+							Nagram::AddOrderedMenuAction(
+								_menu.get(),
+								Nagram::MenuAction::Save,
+								tr::lng_context_save_image(tr::now),
+								base::fn_delayed(st::defaultDropdownMenu.menu.ripple.hideDuration, this, [=] {
 								saveDocumentToFile(itemId, document);
-							}), &st::menuIconDownload);
+							}),
+								&st::menuIconDownload);
 						}
 					}
 				}
@@ -3596,9 +3778,14 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 							canViewMessageStats(item));
 					} else if (const auto contact = media->sharedContact()) {
 						const auto phone = contact->phoneNumber;
-						_menu->addAction(tr::lng_profile_copy_phone(tr::now), [=] {
-							QGuiApplication::clipboard()->setText(phone);
-						}, &st::menuIconCopy);
+						Nagram::AddOrderedMenuAction(
+							_menu.get(),
+							Nagram::MenuAction::Copy,
+							tr::lng_profile_copy_phone(tr::now),
+							[=] {
+								QGuiApplication::clipboard()->setText(phone);
+							},
+							&st::menuIconCopy);
 					} else if (const auto gift = media->gift()) {
 						const auto peer = item->history()->peer;
 						const auto user = peer->asUser();
@@ -3636,12 +3823,15 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					const auto hasRestriction = hasCopyRestriction(item);
 					if (!hasRestriction
 						&& (view->hasVisibleText() || mediaHasTextForCopy)) {
-						_menu->addAction(
+						Nagram::AddOrderedMenuAction(
+							_menu.get(),
+							Nagram::MenuAction::Copy,
 							tr::lng_context_copy_text(tr::now),
 							[=] { copyContextText(itemId); },
 							&st::menuIconCopy);
 					}
-					if ((!item->translation() || !_history->translatedTo())
+					if (!hideTranslate
+						&& (!item->translation() || !_history->translatedTo())
 						&& (view->hasVisibleText() || mediaHasTextForCopy)) {
 						const auto peer = item->history()->peer;
 						const auto itemId = item->id;
@@ -3652,21 +3842,28 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 							: item->originalText();
 						if (!translate.text.isEmpty()
 							&& !Ui::SkipTranslate(translate)) {
-							_menu->addAction(tr::lng_context_translate(tr::now), [=] {
-								_controller->show(Box(
-									Ui::TranslateBox,
-									peer,
-									mediaHasTextForCopy ? MsgId() : itemId,
-									translate,
-									hasRestriction));
-							}, &st::menuIconTranslate);
+							Nagram::AddOrderedMenuAction(
+								_menu.get(),
+								Nagram::MenuAction::Translate,
+								tr::lng_context_translate(tr::now),
+								[=] {
+									_controller->show(Box(
+										Ui::TranslateBox,
+										peer,
+										mediaHasTextForCopy ? MsgId() : itemId,
+										translate,
+										hasRestriction));
+								},
+								&st::menuIconTranslate);
 						}
 					}
 				}
 			}
 		}
 		if (!actionText.isEmpty()) {
-			_menu->addAction(
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Copy,
 				actionText,
 				[text = link->copyToClipboardText()] {
 					QGuiApplication::clipboard()->setText(text);
@@ -3674,12 +3871,18 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 				&st::menuIconCopy);
 		} else if (item
 			&& item->hasDirectLink()
+			&& !hideCopyLink
 			&& isUponSelected != 2
 			&& isUponSelected != -2
 			&& !IsAnchoredEphemeral(item)) {
-			_menu->addAction(item->history()->peer->isMegagroup() ? tr::lng_context_copy_message_link(tr::now) : tr::lng_context_copy_post_link(tr::now), [=] {
-				HistoryView::CopyPostLink(controller, itemId, HistoryView::Context::History);
-			}, &st::menuIconLink);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::CopyLink,
+				item->history()->peer->isMegagroup() ? tr::lng_context_copy_message_link(tr::now) : tr::lng_context_copy_post_link(tr::now),
+				[=] {
+					HistoryView::CopyPostLink(controller, itemId, HistoryView::Context::History);
+				},
+				&st::menuIconLink);
 		}
 		if (sponsored) {
 			const auto hasAbout = ranges::any_of(
@@ -3707,15 +3910,27 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			}
 		}
 		if (isUponSelected > 1) {
-			if (selectedState.count > 0 && selectedState.count == selectedState.canForwardCount) {
-				_menu->addAction(tr::lng_context_forward_selected(tr::now), [=] {
-					_widget->forwardSelected();
-				}, &st::menuIconForward);
+			if (!hideForward
+				&& selectedState.count > 0
+				&& selectedState.count == selectedState.canForwardCount) {
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Forward,
+					tr::lng_context_forward_selected(tr::now),
+					[=] {
+						_widget->forwardSelected();
+					},
+					&st::menuIconForward);
 			}
 			if (selectedState.count > 0 && selectedState.count == selectedState.canDeleteCount) {
-				_menu->addAction(tr::lng_context_delete_selected(tr::now), [=] {
-					_widget->confirmDeleteSelected();
-				}, &st::menuIconDelete);
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Delete,
+					tr::lng_context_delete_selected(tr::now),
+					[=] {
+						_widget->confirmDeleteSelected();
+					},
+					&st::menuIconDelete);
 			}
 			addUnpinSelectedAction();
 			if (selectedState.count > 0 && !hasCopyRestrictionForSelected()) {
@@ -3730,18 +3945,28 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					selectedItemsForExport(),
 					this);
 			}
-			_menu->addAction(tr::lng_context_clear_selection(tr::now), [=] {
-				_widget->clearSelected();
-			}, &st::menuIconSelect);
+			Nagram::AddOrderedMenuAction(
+				_menu.get(),
+				Nagram::MenuAction::Select,
+				tr::lng_context_clear_selection(tr::now),
+				[=] {
+					_widget->clearSelected();
+				},
+				&st::menuIconSelect);
 		} else if (item
 			&& ((isUponSelected != -2 && (canForward || canDelete))
 				|| item->isRegular()
 				|| item->isEphemeral())) {
 			if (isUponSelected != -2) {
-				if (canForward) {
-					_menu->addAction(tr::lng_context_forward_msg(tr::now), [=] {
-						forwardAsGroup(itemId);
-					}, &st::menuIconForward);
+				if (canForward && !hideForward) {
+					Nagram::AddOrderedMenuAction(
+						_menu.get(),
+						Nagram::MenuAction::Forward,
+						tr::lng_context_forward_msg(tr::now),
+						[=] {
+							forwardAsGroup(itemId);
+						},
+						&st::menuIconForward);
 				}
 				if (HistoryView::CanAddOfferToMessage(item)) {
 					_menu->addAction(tr::lng_context_add_offer(tr::now), [=] {
@@ -3755,24 +3980,34 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					if (item->isUploading()) {
 						if (item->media()
 							&& item->media()->allowsEditCaption()) {
-							_menu->addAction(
+							Nagram::AddOrderedMenuAction(
+								_menu.get(),
+								Nagram::MenuAction::Edit,
 								tr::lng_context_upload_edit_caption(tr::now),
 								[=] { editCaptionUploadLayer(item); },
 								&st::menuIconEdit);
 						}
 						_menu->addAction(tr::lng_context_cancel_upload(tr::now), callback, &st::menuIconCancel);
 					} else {
-						_menu->addAction(Ui::DeleteMessageContextAction(
+						Nagram::AddOrderedMenuAction(
+							_menu.get(),
+							Nagram::MenuAction::Delete,
+							Ui::DeleteMessageContextAction(
 							_menu->menu(),
 							callback,
 							item->ttlDestroyAt(),
 							[=] { _menu = nullptr; }));
 					}
 				}
-				if (!canBlockSender && canReport) {
-					_menu->addAction(tr::lng_context_report_msg(tr::now), [=] {
-						reportAsGroup(itemId);
-					}, &st::menuIconReport);
+				if (!hideReport && !canBlockSender && canReport) {
+					Nagram::AddOrderedMenuAction(
+						_menu.get(),
+						Nagram::MenuAction::Report,
+						tr::lng_context_report_msg(tr::now),
+						[=] {
+							reportAsGroup(itemId);
+						},
+						&st::menuIconReport);
 				}
 				HistoryView::AddEphemeralMessageActions(
 					_menu,
@@ -3783,17 +4018,30 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			if (isUponSelected != -2) {
 				HistoryView::AddEphemeralAboutAction(_menu, item);
 			}
-			if (isUponSelected != -2 && canBlockSender) {
-				_menu->addAction(tr::lng_profile_block_user(tr::now), [=] {
-					blockSenderAsGroup(itemId);
-				}, &st::menuIconBlock);
+			if (!hideBlock && isUponSelected != -2 && canBlockSender) {
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::Block,
+					tr::lng_profile_block_user(tr::now),
+					[=] {
+						blockSenderAsGroup(itemId);
+					},
+					&st::menuIconBlock);
 			}
 		} else if (Element::Moused()) {
 			addSelectMessageAction(Element::Moused()->data());
 		}
 	}
 
+	Nagram::AddSnapshotAction(_menu, controller,
+		!getSelectedItems().empty() ? getSelectedItems()
+			: _dragStateItem ? MessageIdsList{ _dragStateItem->fullId() } : MessageIdsList());
+	Nagram::AddMessageBatchAction(_menu, controller,
+		!getSelectedItems().empty() ? getSelectedItems()
+			: _dragStateItem ? MessageIdsList{ _dragStateItem->fullId() } : MessageIdsList());
 	if (_dragStateItem) {
+		Nagram::AddReadingMenu(_menu, _dragStateItem);
+		Settings::AddNagramFilterMenu(_menu, _dragStateItem, controller);
 		const auto view = viewByItem(_dragStateItem);
 		const auto textItem = view ? view->textItem() : _dragStateItem;
 		const auto wasAmount = _menu->actions().size();
@@ -3869,7 +4117,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 	const auto reactItem = Element::Hovered()
 		? Element::Hovered()->data().get()
 		: nullptr;
-	const auto attached = reactItem
+	const auto hideForSelection = Nagram::Get(
+		Core::App().settings(), Nagram::Option::HideReactionMenuWhenSelecting)
+		&& hasSelected;
+	const auto attached = (reactItem && !hideForSelection)
 		? AttachSelectorToMenu(
 			_menu.get(),
 			controller,

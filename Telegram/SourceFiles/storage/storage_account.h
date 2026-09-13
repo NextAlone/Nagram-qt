@@ -94,6 +94,9 @@ public:
 	void unregisterDraftSource(
 		not_null<History*> history,
 		Data::DraftKey key);
+	[[nodiscard]] bool draftSourceHasContent(
+		not_null<History*> history,
+		Data::DraftKey key) const;
 	void writeDrafts(not_null<History*> history);
 	void readDraftsWithCursors(not_null<History*> history);
 	void writeDraftCursors(not_null<History*> history);

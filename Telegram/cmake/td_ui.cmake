@@ -27,6 +27,7 @@ set(style_files
     boxes/boxes.style
     api/api_chat_invite.style
     boxes/add_contact_box.style
+    nagram/nagram_snapshot.style
     boxes/background_preview_box.style
     boxes/moderate_messages_box.style
     boxes/passcode_box.style

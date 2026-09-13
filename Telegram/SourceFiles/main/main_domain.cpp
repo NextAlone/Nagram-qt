@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "main/main_domain.h"
+#include "nagram/nagram_settings.h"
 
 #include "core/application.h"
 #include "core/core_settings.h"
@@ -222,7 +223,9 @@ rpl::producer<Session*> Domain::activeSessionValue() const {
 }
 
 int Domain::unreadBadge() const {
-	return _unreadBadge;
+	return Nagram::Get(Core::App().settings(), Nagram::Option::HideApplicationBadge)
+		? 0
+		: _unreadBadge;
 }
 
 bool Domain::unreadBadgeMuted() const {

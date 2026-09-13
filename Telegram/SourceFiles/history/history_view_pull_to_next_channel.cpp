@@ -27,6 +27,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "menu/menu_mark_as_read.h"
 #include "storage/storage_shared_media.h"
 #include "support/support_preload.h"
@@ -776,6 +777,18 @@ PullToNextChannel::PullToNextChannel(
 	}))
 , _hint(base::make_unique_q<HintOverlay>(parent)) {
 	rpl::combine(
+		Nagram::Value(
+			Core::App().settings(),
+			Nagram::Option::DisableScrollToNextChannel),
+		Nagram::Value(
+			Core::App().settings(),
+			Nagram::Option::DisableScrollToNextTopic)
+	) | rpl::skip(1) | rpl::on_next([=] {
+		reset(anim::type::instant);
+		updatePullCurve();
+	}, _lifetime);
+
+	rpl::combine(
 		_scroll->positionValue(),
 		_scroll->movementValue()
 	) | rpl::on_next([=](
@@ -832,6 +845,9 @@ bool PullToNextChannel::active() const {
 	case Mode::History: {
 		const auto history = _history.get();
 		return Core::App().settings().pullToNextChannel()
+			&& !Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::DisableScrollToNextChannel)
 			&& history
 			&& history->peer->isBroadcast()
 			&& atBottom()
@@ -840,6 +856,9 @@ bool PullToNextChannel::active() const {
 	}
 	case Mode::Topic:
 		return Core::App().settings().pullToNextChannel()
+			&& !Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::DisableScrollToNextTopic)
 			&& _topic
 			&& atBottom();
 	case Mode::None:
@@ -1068,7 +1087,13 @@ void PullToNextChannel::jumpWhenReady(
 		base::weak_ptr<History> weak,
 		crl::time waited) {
 	const auto next = weak.get();
-	if (!next) {
+	if (!_jumping
+		|| _mode != Mode::History
+		|| Nagram::Get(
+			Core::App().settings(),
+			Nagram::Option::DisableScrollToNextChannel)
+		|| !next
+		|| _next.get() != next) {
 		return;
 	}
 	constexpr auto kInterval = crl::time(100);

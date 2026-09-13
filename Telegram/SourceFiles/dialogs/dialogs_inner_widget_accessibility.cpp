@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/dialogs_inner_widget_accessibility.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
 #include "data/notify/data_notify_settings.h"
 #include "data/data_channel.h"
 #include "data/data_chat_filters.h"
@@ -56,7 +58,8 @@ namespace {
 		not_null<History*> history,
 		not_null<PeerData*> peer) {
 	QStringList parts;
-	if (item->isService()) {
+	if (item->isService() || (peer->isSelf() && Nagram::Get(
+		Core::App().settings(), Nagram::Option::HideSavedAndArchivedPreviews))) {
 		return parts;
 	}
 	const auto dateTime = ItemDateTime(item);
@@ -206,7 +209,8 @@ QString RowAccessibilityName(
 	}
 
 	if (const auto user = peer->asUser()) {
-		if (user->isPremium()) {
+		if (user->isPremium() && !Nagram::Get(Core::App().settings(),
+			Nagram::Option::HidePremiumBadges)) {
 			parts << tr::lng_premium(tr::now);
 		}
 	}
@@ -344,6 +348,12 @@ QString SubItemValue(
 		return {};
 	}
 
+	if (peer->isSelf() && Nagram::Get(Core::App().settings(),
+		Nagram::Option::HideSavedAndArchivedPreviews)
+		&& (item == SubItem::Message || item == SubItem::Sender
+			|| item == SubItem::Draft || item == SubItem::Reactions)) {
+		return {};
+	}
 	switch (item) {
 	case SubItem::Type:
 		return ChatTypeString(peer);
@@ -358,7 +368,8 @@ QString SubItemValue(
 		return {};
 	case SubItem::Premium:
 		if (const auto user = peer->asUser()) {
-			if (user->isPremium()) {
+			if (user->isPremium() && !Nagram::Get(Core::App().settings(),
+				Nagram::Option::HidePremiumBadges)) {
 				return tr::lng_premium(tr::now);
 			}
 		}
@@ -620,7 +631,8 @@ QString PeerSearchResultAccessibilityName(
 	}
 
 	if (const auto user = peer->asUser()) {
-		if (user->isPremium()) {
+		if (user->isPremium() && !Nagram::Get(Core::App().settings(),
+			Nagram::Option::HidePremiumBadges)) {
 			parts << tr::lng_premium(tr::now);
 		}
 	}

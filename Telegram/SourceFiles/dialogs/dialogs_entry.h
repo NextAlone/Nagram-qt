@@ -133,6 +133,12 @@ public:
 			: _sortKeyInChatList;
 	}
 	void updateChatListSortPosition();
+	void refreshNagramSortPosition();
+	[[nodiscard]] uint8 nagramSortPriority(FilterId filterId) const {
+		return (fixedOnTopIndex() || isPinnedDialog(filterId))
+			? uint8(255)
+			: _nagramSortPriority;
+	}
 	void setChatListTimeId(TimeId date);
 	virtual void updateChatListExistence();
 	bool needUpdateInChatList() const;
@@ -220,6 +226,7 @@ private:
 	mutable DateTextCache _chatListDateCache;
 	TimeId _timeId = 0;
 	Flags _flags;
+	uint8 _nagramSortPriority = 0;
 
 };
 

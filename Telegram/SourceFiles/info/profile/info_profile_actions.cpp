@@ -1555,6 +1555,18 @@ Section DetailsFiller::makeInfo() {
 		result.text->setContextCopyText(contextCopyText);
 		return result;
 	};
+	addInfoOneLine(
+		(_peer->isUser()
+			? tr::lng_nagram_profile_user_id()
+			: _peer->isChat() || _peer->isMegagroup()
+			? tr::lng_nagram_profile_group_id()
+			: tr::lng_nagram_profile_channel_id()),
+		ProfileIdValue(_peer),
+		tr::lng_context_copy_text(tr::now));
+	addInfoOneLine(
+		tr::lng_nagram_profile_photo_dc(),
+		ProfilePhotoDcValue(_peer),
+		tr::lng_context_copy_text(tr::now));
 	const auto fitLabelToButton = [&](
 			not_null<Ui::RpWidget*> button,
 			not_null<Ui::FlatLabel*> label,

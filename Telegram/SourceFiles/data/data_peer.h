@@ -383,6 +383,7 @@ public:
 	[[nodiscard]] const QString &name() const;
 	[[nodiscard]] const QString &shortName() const;
 	[[nodiscard]] const QString &topBarNameText() const;
+	void localNameChanged();
 
 	[[nodiscard]] QString username() const;
 	[[nodiscard]] QString editableUsername() const;

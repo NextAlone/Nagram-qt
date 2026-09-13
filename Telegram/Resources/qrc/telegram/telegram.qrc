@@ -1,4 +1,8 @@
 <RCC>
+  <qresource prefix="/langs/nagram">
+    <file alias="zh-hans.strings">../../langs/nagram_zh-hans.strings</file>
+    <file alias="zh-hant.strings">../../langs/nagram_zh-hant.strings</file>
+  </qresource>
   <qresource prefix="/gui">
     <file alias="art/background.tgv">../../art/background.tgv</file>
     <file alias="art/bg_thumbnail.png">../../art/bg_thumbnail.png</file>

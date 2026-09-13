@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "storage/localimageloader.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "api/api_text_entities.h"
 #include "api/api_sending.h"
 #include "data/data_document.h"
@@ -521,6 +523,8 @@ FileLoadTask::FileLoadTask(Args &&args)
 , _caption(std::move(args.caption))
 , _spoiler(args.spoiler)
 , _forceFile(args.forceFile)
+, _mp4FilePreview(Nagram::Get(
+	Core::App().settings(), Nagram::Option::Mp4FilePreview))
 , _sendLargePhotos(args.sendLargePhotos)
 , _animationJob(std::move(args.animationJob))
 , _animationAsGif(args.animationAsGif)
@@ -785,6 +789,7 @@ void FileLoadTask::process(ProcessArgs &&args) {
 	auto isAnimation = false;
 	auto isSong = false;
 	auto isVideo = false;
+	auto fileVideoPreview = false;
 	auto isVoice = (_type == SendMediaType::Audio);
 	auto isRound = (_type == SendMediaType::Round);
 	auto isSticker = false;
@@ -864,7 +869,14 @@ void FileLoadTask::process(ProcessArgs &&args) {
 					fullimageformat = base::take(image->format);
 				}
 			}
-			const auto mimeType = Core::MimeTypeForData(_content);
+			const auto preparedMp4 = _forceFile && _mp4FilePreview
+				&& _information
+				&& _information->filemime == u"video/mp4"_q
+				&& std::holds_alternative<Ui::PreparedFileInformation::Video>(
+					_information->media);
+			const auto mimeType = preparedMp4
+				? Core::MimeTypeForName(u"video/mp4"_q)
+				: Core::MimeTypeForData(_content);
 			filemime = mimeType.name();
 			if (!Core::IsMimeSticker(filemime)
 				&& fullimageformat != u"jpeg"_q) {
@@ -1055,7 +1067,10 @@ void FileLoadTask::process(ProcessArgs &&args) {
 					crl::time(0),
 					video->duration);
 			}
-			if (!_forceFile) {
+			fileVideoPreview = _forceFile && _mp4FilePreview
+				&& (filemime == u"video/mp4"_q)
+				&& coverWidth > 0 && coverHeight > 0 && realSeconds > 0;
+			if (!_forceFile || fileVideoPreview) {
 				if (gif && !_album && (filemime == u"video/mp4"_q)) {
 					attributes.push_back(MTP_documentAttributeAnimated());
 				}
@@ -1241,7 +1256,7 @@ void FileLoadTask::process(ProcessArgs &&args) {
 	_result->photo = photo;
 	_result->document = document;
 	_result->photoThumbs = photoThumbs;
-	_result->forceFile = _forceFile;
+	_result->forceFile = _forceFile && !fileVideoPreview;
 }
 
 void FileLoadTask::finish() {

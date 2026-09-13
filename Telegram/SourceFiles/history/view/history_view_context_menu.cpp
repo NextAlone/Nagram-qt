@@ -14,6 +14,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_report.h"
 #include "api/api_ringtones.h"
 #include "api/api_transcribes.h"
+#include "nagram/nagram_service_boxes.h"
 #include "api/api_who_reacted.h"
 #include "api/api_stickers_creator.h"
 #include "api/api_suggest_post.h"
@@ -111,6 +112,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session_settings.h"
 #include "media/audio/media_audio.h"
 #include "media/player/media_player_instance.h"
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_menu.h"
+#include "nagram/nagram_reading.h"
+#include "nagram/nagram_snapshot.h"
+#include "nagram/nagram_batch.h"
+#include "settings/settings_nagram_filters.h"
+#include "nagram/nagram_media.h"
 #include "spellcheck/spellcheck_types.h"
 #include "apiwrap.h"
 #include "styles/style_chat.h"
@@ -369,19 +377,26 @@ void AddPhotoActions(
 		not_null<ListWidget*> list) {
 	const auto contextId = item ? item->fullId() : FullMsgId();
 	if (!list->hasCopyMediaRestriction(item)) {
-		menu->addAction(
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Save,
 			tr::lng_context_save_image(tr::now),
 			base::fn_delayed(
 				st::defaultDropdownMenu.menu.ripple.hideDuration,
 				&photo->session(),
 				[=] { SavePhotoToFile(photo); }),
 			&st::menuIconSaveImage);
-		menu->addAction(tr::lng_context_copy_image(tr::now), [=] {
-			const auto item = photo->owner().message(contextId);
-			if (!list->showCopyMediaRestriction(item)) {
-				CopyImage(photo);
-			}
-		}, &st::menuIconCopy);
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Copy,
+			tr::lng_context_copy_image(tr::now),
+			[=] {
+				const auto item = photo->owner().message(contextId);
+				if (!list->showCopyMediaRestriction(item)) {
+					CopyImage(photo);
+				}
+			},
+			&st::menuIconCopy);
 	}
 	if (photo->hasAttachedStickers()) {
 		const auto controller = list->controller();
@@ -520,6 +535,17 @@ void AddDocumentActions(
 				Menu::RateTranscribeCallbackFactory(item)));
 		}
 	}
+	if (item && Nagram::CustomTranscriptionSelected()
+		&& (document->isVoiceMessage() || document->isVideoMessage())
+		&& !ItemHasTtl(item)) {
+		const auto id = item->fullId();
+		const auto show = list->controller()->uiShow();
+		menu->addAction(tr::lng_nagram_service_transcription(tr::now), [=] {
+			if (const auto current = show->session().data().message(id)) {
+				Nagram::ShowCustomTranscription(show, current, true);
+			}
+		});
+	}
 	AddSaveDocumentAction(menu, item, document, list);
 	AddCopyFilename(
 		menu,
@@ -530,6 +556,9 @@ void AddDocumentActions(
 void AddPostLinkAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request) {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuCopyLink)) {
+		return;
+	}
 	const auto item = request.item;
 	if (!item
 		|| !item->hasDirectLink()
@@ -545,7 +574,9 @@ void AddPostLinkAction(
 		? request.view->context()
 		: Context::History;
 	const auto controller = request.navigation->parentController();
-	menu->addAction(
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::CopyLink,
 		(item->history()->peer->isMegagroup()
 			? tr::lng_context_copy_message_link
 			: tr::lng_context_copy_post_link)(tr::now),
@@ -572,18 +603,23 @@ bool AddForwardSelectedAction(
 		return false;
 	}
 
-	menu->addAction(tr::lng_context_forward_selected(tr::now), [=] {
-		const auto weak = base::make_weak(list);
-		const auto callback = [=] {
-			if (const auto strong = weak.get()) {
-				strong->cancelSelection();
-			}
-		};
-		Window::ShowForwardMessagesBox(
-			request.navigation,
-			ExtractIdsList(request.selectedItems),
-			callback);
-	}, &st::menuIconForward);
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Forward,
+		tr::lng_context_forward_selected(tr::now),
+		[=] {
+			const auto weak = base::make_weak(list);
+			const auto callback = [=] {
+				if (const auto strong = weak.get()) {
+					strong->cancelSelection();
+				}
+			};
+			Window::ShowForwardMessagesBox(
+				request.navigation,
+				ExtractIdsList(request.selectedItems),
+				callback);
+		},
+		&st::menuIconForward);
 	return true;
 }
 
@@ -609,15 +645,20 @@ bool AddForwardMessageAction(
 		}
 	}
 	const auto itemId = item->fullId();
-	menu->addAction(tr::lng_context_forward_msg(tr::now), [=] {
-		if (const auto item = owner->message(itemId)) {
-			Window::ShowForwardMessagesBox(
-				request.navigation,
-				(asGroup
-					? owner->itemOrItsGroup(item)
-					: MessageIdsList{ 1, itemId }));
-		}
-	}, &st::menuIconForward);
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Forward,
+		tr::lng_context_forward_msg(tr::now),
+		[=] {
+			if (const auto item = owner->message(itemId)) {
+				Window::ShowForwardMessagesBox(
+					request.navigation,
+					(asGroup
+						? owner->itemOrItsGroup(item)
+						: MessageIdsList{ 1, itemId }));
+			}
+		},
+		&st::menuIconForward);
 	return true;
 }
 
@@ -625,6 +666,9 @@ void AddForwardAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuForward)) {
+		return;
+	}
 	AddForwardSelectedAction(menu, request, list);
 	AddForwardMessageAction(menu, request, list);
 }
@@ -860,14 +904,19 @@ bool AddReplyToMessageAction(
 		: tr::lng_context_quote_and_reply)(
 			tr::now,
 			Ui::Text::FixAmpersandInAction);
-	menu->addAction(std::move(text), [=, itemId = item->fullId()] {
-		list->replyToMessageRequestNotify({
-			.messageId = itemId,
-			.quote = quote.highlight.quote,
-			.quoteOffset = quote.highlight.quoteOffset,
-			.todoItemId = todoListTaskId,
-		}, base::IsCtrlPressed());
-	}, &st::menuIconReply);
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Reply,
+		std::move(text),
+		[=, itemId = item->fullId()] {
+			list->replyToMessageRequestNotify({
+				.messageId = itemId,
+				.quote = quote.highlight.quote,
+				.quoteOffset = quote.highlight.quoteOffset,
+				.todoItemId = todoListTaskId,
+			}, base::IsCtrlPressed());
+		},
+		&st::menuIconReply);
 	return true;
 }
 
@@ -967,17 +1016,22 @@ bool AddEditMessageAction(
 	}
 	const auto owner = &item->history()->owner();
 	const auto itemId = item->fullId();
-	menu->addAction(tr::lng_context_edit_msg(tr::now), [=] {
-		const auto item = owner->message(itemId);
-		if (!item) {
-			return;
-		}
-		if (item->richPage()
-			|| Iv::Editor::HasEditWindowFor(&owner->session(), itemId)) {
-			Ui::PreventDelayedActivation();
-		}
-		list->editMessageRequestNotify(item->fullId());
-	}, &st::menuIconEdit);
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Edit,
+		tr::lng_context_edit_msg(tr::now),
+		[=] {
+			const auto item = owner->message(itemId);
+			if (!item) {
+				return;
+			}
+			if (item->richPage()
+				|| Iv::Editor::HasEditWindowFor(&owner->session(), itemId)) {
+				Ui::PreventDelayedActivation();
+			}
+			list->editMessageRequestNotify(item->fullId());
+		},
+		&st::menuIconEdit);
 	return true;
 }
 
@@ -1010,6 +1064,9 @@ bool AddPinMessageAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuPin)) {
+		return false;
+	}
 	const auto context = list->elementContext();
 	const auto item = request.item;
 	if (!item || !item->isRegular()) {
@@ -1031,7 +1088,9 @@ bool AddPinMessageAction(
 			&item->history()->session(),
 			ExtractIdsList(request.selectedItems));
 		if (!ids.empty()) {
-			menu->addAction(
+			Nagram::AddOrderedMenuAction(
+				menu,
+				Nagram::MenuAction::Pin,
 				tr::lng_context_unpin_selected(tr::now),
 				crl::guard(controller, [=] {
 					const auto clear = crl::guard(list, [=] {
@@ -1052,9 +1111,14 @@ bool AddPinMessageAction(
 	}
 	const auto pinItemId = pinItem->fullId();
 	const auto isPinned = pinItem->isPinned();
-	menu->addAction(isPinned ? tr::lng_context_unpin_msg(tr::now) : tr::lng_context_pin_msg(tr::now), crl::guard(controller, [=] {
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Pin,
+		isPinned ? tr::lng_context_unpin_msg(tr::now) : tr::lng_context_pin_msg(tr::now),
+		crl::guard(controller, [=] {
 		Window::ToggleMessagePinned(controller, pinItemId, !isPinned);
-	}), isPinned ? &st::menuIconUnpin : &st::menuIconPin);
+	}),
+		isPinned ? &st::menuIconUnpin : &st::menuIconPin);
 	return true;
 }
 
@@ -1100,30 +1164,35 @@ bool AddDeleteSelectedAction(
 		return false;
 	}
 
-	menu->addAction(tr::lng_context_delete_selected(tr::now), [=] {
-		const auto clear = crl::guard(list, [=] { list->cancelSelection(); });
-		if (ranges::all_of(request.selectedItems, &SelectedItem::ephemeral)) {
-			const auto owner = &request.navigation->session().data();
-			auto items = std::vector<not_null<HistoryItem*>>();
-			items.reserve(request.selectedItems.size());
-			for (const auto &selected : request.selectedItems) {
-				if (const auto item = owner->message(selected.msgId)) {
-					items.push_back(item);
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Delete,
+		tr::lng_context_delete_selected(tr::now),
+		[=] {
+			const auto clear = crl::guard(list, [=] { list->cancelSelection(); });
+			if (ranges::all_of(request.selectedItems, &SelectedItem::ephemeral)) {
+				const auto owner = &request.navigation->session().data();
+				auto items = std::vector<not_null<HistoryItem*>>();
+				items.reserve(request.selectedItems.size());
+				for (const auto &selected : request.selectedItems) {
+					if (const auto item = owner->message(selected.msgId)) {
+						items.push_back(item);
+					}
 				}
+				ConfirmDeleteSelectedEphemeral(
+					request.navigation->uiShow(),
+					std::move(items),
+					clear);
+				return;
 			}
-			ConfirmDeleteSelectedEphemeral(
-				request.navigation->uiShow(),
-				std::move(items),
-				clear);
-			return;
-		}
-		auto items = ExtractIdsList(request.selectedItems);
-		auto box = Box<DeleteMessagesBox>(
-			&request.navigation->session(),
-			std::move(items));
-		box->setDeleteConfirmedCallback(clear);
-		request.navigation->parentController()->show(std::move(box));
-	}, &st::menuIconDelete);
+			auto items = ExtractIdsList(request.selectedItems);
+			auto box = Box<DeleteMessagesBox>(
+				&request.navigation->session(),
+				std::move(items));
+			box->setDeleteConfirmedCallback(clear);
+			request.navigation->parentController()->show(std::move(box));
+		},
+		&st::menuIconDelete);
 	return true;
 }
 
@@ -1179,7 +1248,9 @@ bool AddDeleteMessageAction(
 	});
 	if (item->isUploading()) {
 		if (item->media() && item->media()->allowsEditCaption()) {
-			menu->addAction(
+			Nagram::AddOrderedMenuAction(
+				menu,
+				Nagram::MenuAction::Edit,
 				tr::lng_context_upload_edit_caption(tr::now),
 				crl::guard(controller, [=] {
 					if (const auto item = owner->message(itemId)) {
@@ -1194,7 +1265,10 @@ bool AddDeleteMessageAction(
 			&st::menuIconCancel);
 		return true;
 	}
-	menu->addAction(Ui::DeleteMessageContextAction(
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Delete,
+		Ui::DeleteMessageContextAction(
 		menu->menu(),
 		callback,
 		item->ttlDestroyAt(),
@@ -1245,6 +1319,9 @@ void AddReportAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuReport)) {
+		return;
+	}
 	const auto item = request.item;
 	if (!request.selectedItems.empty()) {
 		return;
@@ -1270,7 +1347,9 @@ void AddReportAction(
 			ShowReportMessageBox(controller->uiShow(), peer, ids, {});
 		}
 	});
-	menu->addAction(
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Report,
 		tr::lng_context_report_msg(tr::now),
 		callback,
 		&st::menuIconReport);
@@ -1280,6 +1359,9 @@ void AddBlockSenderAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuBlock)) {
+		return;
+	}
 	const auto item = request.item;
 	if (!request.selectedItems.empty()) {
 		return;
@@ -1289,12 +1371,17 @@ void AddBlockSenderAction(
 	const auto owner = &item->history()->owner();
 	const auto controller = list->controller();
 	const auto itemId = item->fullId();
-	menu->addAction(tr::lng_profile_block_user(tr::now), crl::guard(controller, [=] {
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Block,
+		tr::lng_profile_block_user(tr::now),
+		crl::guard(controller, [=] {
 		if (owner->message(itemId)) {
 			controller->show(
 				Box(Window::BlockSenderFromRepliesBox, controller, itemId));
 		}
-	}), &st::menuIconBlock);
+	}),
+		&st::menuIconBlock);
 }
 
 bool AddClearSelectionAction(
@@ -1304,9 +1391,14 @@ bool AddClearSelectionAction(
 	if (!request.overSelection || request.selectedItems.empty()) {
 		return false;
 	}
-	menu->addAction(tr::lng_context_clear_selection(tr::now), [=] {
-		list->cancelSelection();
-	}, &st::menuIconSelect);
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Select,
+		tr::lng_context_clear_selection(tr::now),
+		[=] {
+			list->cancelSelection();
+		},
+		&st::menuIconSelect);
 	return true;
 }
 
@@ -1314,6 +1406,9 @@ bool AddSelectMessageAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuSelect)) {
+		return false;
+	}
 	const auto item = request.item;
 	if (request.overSelection && !request.selectedItems.empty()) {
 		return false;
@@ -1327,22 +1422,42 @@ bool AddSelectMessageAction(
 	const auto owner = &item->history()->owner();
 	const auto itemId = item->fullId();
 	const auto asGroup = (request.pointState != PointState::GroupPart);
-	menu->addAction(tr::lng_context_select_msg(tr::now), [=] {
-		if (const auto item = owner->message(itemId)) {
-			if (asGroup) {
-				list->selectItemAsGroup(item);
-			} else {
-				list->selectItem(item);
-			}
-		}
-	}, &st::menuIconSelect);
-	if (!request.selectedItems.empty() && list->canSelectItemsUpTo(item)) {
-		menu->addAction(tr::lng_context_select_msg_bulk(tr::now), [=] {
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Select,
+		tr::lng_context_select_msg(tr::now),
+		[=] {
 			if (const auto item = owner->message(itemId)) {
-				list->selectItemsUpTo(item);
+				if (asGroup) {
+					list->selectItemAsGroup(item);
+				} else {
+					list->selectItem(item);
+				}
 			}
-		}, &st::menuIconSelect);
+		},
+		&st::menuIconSelect);
+	if (!request.selectedItems.empty() && list->canSelectItemsUpTo(item)) {
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Select,
+			tr::lng_context_select_msg_bulk(tr::now),
+			[=] {
+				if (const auto item = owner->message(itemId)) {
+					list->selectItemsUpTo(item);
+				}
+			},
+			&st::menuIconSelect);
 	}
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Select,
+		tr::lng_nagram_select_author(tr::now),
+		crl::guard(list, [=] {
+			if (const auto item = owner->message(itemId)) {
+				list->selectLoadedAuthor(item->from()->id);
+			}
+		}),
+		&st::menuIconSelect);
 	return true;
 }
 
@@ -1359,6 +1474,9 @@ bool AddViewStatisticsAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuStatistics)) {
+		return false;
+	}
 	const auto item = request.item;
 	if (!item || !item->isRegular() || item->isService()) {
 		return false;
@@ -1377,9 +1495,14 @@ bool AddViewStatisticsAction(
 	}
 	const auto controller = list->controller();
 	const auto itemId = item->fullId();
-	menu->addAction(tr::lng_stats_title(tr::now), crl::guard(controller, [=] {
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Statistics,
+		tr::lng_stats_title(tr::now),
+		crl::guard(controller, [=] {
 		controller->showSection(Info::Statistics::Make(channel, itemId, {}));
-	}), &st::menuIconStats);
+	}),
+		&st::menuIconStats);
 	return true;
 }
 
@@ -1435,7 +1558,9 @@ void AddCopyLinkAction(
 		return;
 	}
 	const auto text = link->copyToClipboardText();
-	menu->addAction(
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Copy,
 		action,
 		[=] { QGuiApplication::clipboard()->setText(text); },
 		&st::menuIconCopy);
@@ -1816,24 +1941,35 @@ void FillContextMenuItems(
 		const auto text = request.selectedItems.empty()
 			? tr::lng_context_copy_selected(tr::now)
 			: tr::lng_context_copy_selected_items(tr::now);
-		result->addAction(text, [=] {
-			list->copySelectedText();
-		}, &st::menuIconCopy);
+		Nagram::AddOrderedMenuAction(
+			result,
+			Nagram::MenuAction::Copy,
+			text,
+			[=] {
+				list->copySelectedText();
+			},
+			&st::menuIconCopy);
 	}
 	if (request.overSelection
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuTranslate)
 		&& view
 		&& !Ui::SkipTranslate(list->getSelectedText().rich)) {
 		const auto owner = &view->history()->owner();
-		result->addAction(tr::lng_context_translate_selected(tr::now), [=] {
-			if (const auto item = owner->message(itemId)) {
-				list->controller()->show(Box(
-					Ui::TranslateBox,
-					item->history()->peer,
-					MsgId(),
-					list->getSelectedText().rich,
-					list->hasCopyRestrictionForSelected()));
-			}
-		}, &st::menuIconTranslate);
+		Nagram::AddOrderedMenuAction(
+			result,
+			Nagram::MenuAction::Translate,
+			tr::lng_context_translate_selected(tr::now),
+			[=] {
+				if (const auto item = owner->message(itemId)) {
+					list->controller()->show(Box(
+						Ui::TranslateBox,
+						item->history()->peer,
+						MsgId(),
+						list->getSelectedText().rich,
+						list->hasCopyRestrictionForSelected()));
+				}
+			},
+			&st::menuIconTranslate);
 	}
 
 	AddTopMessageActions(result, request, list);
@@ -1859,9 +1995,14 @@ void FillContextMenuItems(
 			? itemMedia->sharedContact()
 			: nullptr) {
 			const auto phone = contact->phoneNumber;
-			result->addAction(tr::lng_profile_copy_phone(tr::now), [=] {
-				QGuiApplication::clipboard()->setText(phone);
-			}, &st::menuIconCopy);
+			Nagram::AddOrderedMenuAction(
+				result,
+				Nagram::MenuAction::Copy,
+				tr::lng_profile_copy_phone(tr::now),
+				[=] {
+					QGuiApplication::clipboard()->setText(phone);
+				},
+				&st::menuIconCopy);
 		} else if (const auto gift = itemMedia
 			? itemMedia->gift()
 			: nullptr) {
@@ -1894,22 +2035,27 @@ void FillContextMenuItems(
 		if (!link && (view->hasVisibleText() || mediaHasTextForCopy)) {
 			if (!list->hasCopyRestriction(view->data())) {
 				const auto asGroup = (request.pointState != PointState::GroupPart);
-				result->addAction(tr::lng_context_copy_text(tr::now), [=] {
-					if (const auto item = owner->message(itemId)) {
-						if (!list->showCopyRestriction(item)) {
-							if (asGroup) {
-								if (const auto group = owner->groups().find(item)) {
-									TextUtilities::SetClipboardText(HistoryGroupText(group));
-									return;
+				Nagram::AddOrderedMenuAction(
+					result,
+					Nagram::MenuAction::Copy,
+					tr::lng_context_copy_text(tr::now),
+					[=] {
+						if (const auto item = owner->message(itemId)) {
+							if (!list->showCopyRestriction(item)) {
+								if (asGroup) {
+									if (const auto group = owner->groups().find(item)) {
+										TextUtilities::SetClipboardText(HistoryGroupText(group));
+										return;
+									}
 								}
+								Iv::SetRichBlocksClipboard(
+									HistoryItemText(item),
+									HistoryItemRichBlocks(item),
+									&item->history()->session());
 							}
-							Iv::SetRichBlocksClipboard(
-								HistoryItemText(item),
-								HistoryItemRichBlocks(item),
-								&item->history()->session());
 						}
-					}
-				}, &st::menuIconCopy);
+					},
+					&st::menuIconCopy);
 			}
 
 			const auto translate = mediaHasTextForCopy
@@ -1918,25 +2064,34 @@ void FillContextMenuItems(
 					.append(item->originalText()))
 				: item->originalText();
 			if ((!item->translation() || !item->history()->translatedTo())
+				&& !Nagram::MenuHidden(
+					Core::App().settings(),
+					Nagram::Option::HideMenuTranslate)
 				&& !translate.text.isEmpty()
 				&& !Ui::SkipTranslate(translate)) {
-				result->addAction(tr::lng_context_translate(tr::now), [=] {
-					if (const auto item = owner->message(itemId)) {
-						list->controller()->show(Box(
-							Ui::TranslateBox,
-							item->history()->peer,
-							mediaHasTextForCopy
-								? MsgId()
-								: item->fullId().msg,
-							translate,
-							list->hasCopyRestriction(view->data())));
-					}
-				}, &st::menuIconTranslate);
+				Nagram::AddOrderedMenuAction(
+					result,
+					Nagram::MenuAction::Translate,
+					tr::lng_context_translate(tr::now),
+					[=] {
+						if (const auto item = owner->message(itemId)) {
+							list->controller()->show(Box(
+								Ui::TranslateBox,
+								item->history()->peer,
+								mediaHasTextForCopy
+									? MsgId()
+									: item->fullId().msg,
+								translate,
+								list->hasCopyRestriction(view->data())));
+						}
+					},
+					&st::menuIconTranslate);
 			}
 		}
 	}
 
 	AddCopyLinkAction(result, link);
+	Nagram::AddMediaDetailsAction(result, list->controller(), request.item);
 	AddMessageActions(result, request, list);
 
 	const auto wasAmount = result->actions().size();
@@ -1980,6 +2135,18 @@ base::unique_qptr<Ui::PopupMenu> FillContextMenu(
 
 	// Build the full message menu.
 	FillContextMenuItems(result, list, request, hasPollOption);
+	Nagram::AddSnapshotAction(result, list->controller(),
+		request.overSelection && !request.selectedItems.empty()
+			? ExtractIdsList(request.selectedItems)
+			: item ? MessageIdsList{ item->fullId() } : MessageIdsList());
+	Nagram::AddMessageBatchAction(result, list->controller(),
+		request.overSelection && !request.selectedItems.empty()
+			? ExtractIdsList(request.selectedItems)
+			: item ? MessageIdsList{ item->fullId() } : MessageIdsList());
+	if (item && request.selectedItems.empty()) {
+		Nagram::AddReadingMenu(result, item);
+		Settings::AddNagramFilterMenu(result, item, list->controller());
+	}
 
 	if (item) {
 		const auto media = item->media();
@@ -2125,7 +2292,9 @@ void FillPollOptionPage(
 			&st::menuIconRetractVote);
 	}
 	if (replyToOption) {
-		menu->addAction(
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Reply,
 			tr::lng_context_reply_to_poll_option(
 				tr::now,
 				Ui::Text::FixAmpersandInAction),
@@ -2137,7 +2306,9 @@ void FillPollOptionPage(
 		return;
 	}
 	auto text = a->text;
-	menu->addAction(
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Copy,
 		tr::lng_context_copy_poll_option(tr::now),
 		[text = TextForMimeData::Rich(std::move(text))] {
 			TextUtilities::SetClipboardText(text);
@@ -2151,7 +2322,9 @@ void FillPollOptionPage(
 			+ separator
 			+ u"option="_q
 			+ PollOptionToLink(pollOption);
-		menu->addAction(
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::CopyLink,
 			tr::lng_context_copy_poll_option_link(tr::now),
 			[optionLink] {
 				QGuiApplication::clipboard()->setText(optionLink);
@@ -2174,7 +2347,9 @@ void FillPollOptionPage(
 		return false;
 	}();
 	if (canDelete) {
-		menu->addAction(
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Delete,
 			tr::lng_context_delete_poll_option(tr::now),
 			[=] {
 				if (const auto item = owner->message(itemId)) {
@@ -2344,15 +2519,23 @@ void AddPollActions(
 		for (const auto &answer : poll->answers) {
 			text.append('\n').append(radio).append(answer.text);
 		}
-		if (!Ui::SkipTranslate(text)) {
-			menu->addAction(tr::lng_context_translate(tr::now), [=] {
-				controller->show(Box(
-					Ui::TranslateBox,
-					item->history()->peer,
-					MsgId(),
-					std::move(text),
-					item->forbidsForward()));
-			}, &st::menuIconTranslate);
+		if (!Ui::SkipTranslate(text)
+			&& !Nagram::MenuHidden(
+				Core::App().settings(),
+				Nagram::Option::HideMenuTranslate)) {
+			Nagram::AddOrderedMenuAction(
+				menu,
+				Nagram::MenuAction::Translate,
+				tr::lng_context_translate(tr::now),
+				[=] {
+					controller->show(Box(
+						Ui::TranslateBox,
+						item->history()->peer,
+						MsgId(),
+						std::move(text),
+						item->forbidsForward()));
+				},
+				&st::menuIconTranslate);
 		}
 	}
 	if ((context != Context::History)
@@ -2363,10 +2546,20 @@ void AddPollActions(
 		return;
 	}
 	const auto itemId = item->fullId();
-	if (poll->canViewStats() && item->isRegular() && !skipViewStats) {
-		menu->addAction(tr::lng_polls_view_stats(tr::now), [=] {
-			ShowPollStatsBox(controller, itemId);
-		}, &st::menuIconStats);
+	if (poll->canViewStats()
+		&& item->isRegular()
+		&& !skipViewStats
+		&& !Nagram::MenuHidden(
+			Core::App().settings(),
+			Nagram::Option::HideMenuStatistics)) {
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Statistics,
+			tr::lng_polls_view_stats(tr::now),
+			[=] {
+				ShowPollStatsBox(controller, itemId);
+			},
+			&st::menuIconStats);
 	}
 	if (poll->closed()) {
 		return;
@@ -2690,11 +2883,16 @@ void AddCopyFilename(
 		}
 	}();
 	if (!filenameToCopy.empty()) {
-		menu->addAction(tr::lng_context_copy_filename(tr::now), [=] {
-			if (!showCopyRestrictionForSelected()) {
-				TextUtilities::SetClipboardText(filenameToCopy);
-			}
-		}, &st::menuIconCopy);
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Copy,
+			tr::lng_context_copy_filename(tr::now),
+			[=] {
+				if (!showCopyRestrictionForSelected()) {
+					TextUtilities::SetClipboardText(filenameToCopy);
+				}
+			},
+			&st::menuIconCopy);
 	}
 }
 
@@ -2842,6 +3040,9 @@ void AddEmojiPacksAction(
 		std::vector<StickerSetIdentifier> packIds,
 		EmojiPacksSource source,
 		not_null<Window::SessionController*> controller) {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuEmojiPacks)) {
+		return;
+	}
 	if (packIds.empty()) {
 		return;
 	}
@@ -2931,7 +3132,10 @@ void AddEmojiPacksAction(
 			packIds.front(),
 			Data::StickersType::Emoji));
 	});
-	menu->addAction(std::move(button));
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::EmojiPacks,
+		std::move(button));
 }
 
 void AddEmojiPacksAction(
@@ -2997,12 +3201,18 @@ void AddEphemeralMessageActions(
 	if (!anchored && !item->isEphemeral()) {
 		return;
 	}
-	if (!item->out()) {
-		menu->addAction(tr::lng_context_report_msg(tr::now), [=] {
-			if (const auto item = owner->message(itemId)) {
-				ShowReportEphemeralBox(show, item);
-			}
-		}, &st::menuIconReport);
+	if (!item->out()
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::Option::HideMenuReport)) {
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Report,
+			tr::lng_context_report_msg(tr::now),
+			[=] {
+				if (const auto item = owner->message(itemId)) {
+					ShowReportEphemeralBox(show, item);
+				}
+			},
+			&st::menuIconReport);
 	}
 	if (anchored) {
 		menu->addAction(base::make_unique_q<RevertAction>(
@@ -3015,19 +3225,24 @@ void AddEphemeralMessageActions(
 			}));
 		return;
 	}
-	menu->addAction(tr::lng_context_delete_msg(tr::now), [=] {
-		show->show(Ui::MakeConfirmBox({
-			.text = tr::lng_selected_delete_sure_this(),
-			.confirmed = [=](Fn<void()> &&close) {
-				close();
-				if (const auto item = owner->message(itemId)) {
-					session->ephemeralMessages().deleteMessage(item);
-				}
-			},
-			.confirmText = tr::lng_box_delete(),
-			.confirmStyle = &st::attentionBoxButton,
-		}));
-	}, &st::menuIconDelete);
+	Nagram::AddOrderedMenuAction(
+		menu,
+		Nagram::MenuAction::Delete,
+		tr::lng_context_delete_msg(tr::now),
+		[=] {
+			show->show(Ui::MakeConfirmBox({
+				.text = tr::lng_selected_delete_sure_this(),
+				.confirmed = [=](Fn<void()> &&close) {
+					close();
+					if (const auto item = owner->message(itemId)) {
+						session->ephemeralMessages().deleteMessage(item);
+					}
+				},
+				.confirmText = tr::lng_box_delete(),
+				.confirmStyle = &st::attentionBoxButton,
+			}));
+		},
+		&st::menuIconDelete);
 }
 
 void AddEphemeralAboutAction(
@@ -3058,7 +3273,8 @@ void AddEphemeralAboutAction(
 TextWithEntities TransribedText(not_null<HistoryItem*> item) {
 	const auto media = item->media();
 	const auto document = media ? media->document() : nullptr;
-	if (!document || !document->isVoiceMessage()) {
+	if (!document
+		|| (!document->isVoiceMessage() && !document->isVideoMessage())) {
 		return {};
 	}
 	const auto &entry = document->session().api().transcribes().entry(item);

@@ -16,6 +16,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/text_utilities.h"
 #include "ui/painter.h"
 #include "core/ui_integration.h"
+#include "core/application.h"
+#include "core/core_settings.h"
 #include "lang/lang_keys.h"
 #include "history/history_item_components.h"
 #include "history/history_item_helpers.h"
@@ -28,6 +30,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "chat_helpers/emoji_interactions.h"
 #include "core/click_handler_types.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "lottie/lottie_icon.h"
 #include "data/data_channel.h"
 #include "data/data_session.h"
@@ -71,7 +74,9 @@ namespace {
 
 [[nodiscard]] QString FormatEditedDate(QDateTime sent, QDateTime edited) {
 	const auto today = QDateTime::currentDateTime().date();
-	const auto time = QLocale().toString(edited.time(), QLocale::ShortFormat);
+	const auto time = Ui::FormatTime(
+		edited.time(),
+		Nagram::Get(Core::App().settings(), Nagram::Option::SecondsInMessages));
 	if (sent.date() == today && edited.date() == today) {
 		return tr::lng_edited_at(tr::now, lt_time, time);
 	}
@@ -485,32 +490,44 @@ void BottomInfo::layout() {
 void BottomInfo::layoutDateText() {
 	const auto updated = (_data.flags & Data::Flag::Updated);
 	const auto editedPrimary = !updated
+		&& !Nagram::Get(Core::App().settings(), Nagram::Option::HideEditedBadge)
 		&& (_data.flags & Data::Flag::EditedPrimary)
 		&& !(_data.flags & Data::Flag::ForwardedDate);
+	const auto mark = Nagram::EditedMark(Core::App().settings());
 	const auto edited = editedPrimary
 		? QString()
 		: updated
 		? (tr::lng_ephemeral_updated(tr::now) + ' ')
-		: (_data.flags & Data::Flag::Edited)
-		? (tr::lng_edited(tr::now) + ' ')
+		: ((_data.flags & Data::Flag::Edited)
+			&& !Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::HideEditedBadge))
+		? ((mark.isEmpty() ? tr::lng_edited(tr::now) : mark) + ' ')
 		: (_data.flags & Data::Flag::EstimateDate)
 		? (tr::lng_approximate(tr::now) + ' ')
 		: _data.scheduleRepeatPeriod
 		? (SchedulePeriodText(_data.scheduleRepeatPeriod) + ' ')
 		: QString();
-	const auto author = _data.author;
+	const auto author = Nagram::Get(
+		Core::App().settings(),
+		Nagram::Option::HideChannelSignature)
+		? QString()
+		: _data.author;
 	const auto prefix = !author.isEmpty() ? u", "_q : QString();
+	const auto seconds = Nagram::Get(
+		Core::App().settings(),
+		Nagram::Option::SecondsInMessages);
 	const auto date = editedPrimary
 		? FormatEditedDate(_data.date, _data.editedDate)
 		: edited + ((_data.flags & Data::Flag::ForwardedDate)
-		? Ui::FormatDateTimeSavedFrom(_data.date)
-		: QLocale().toString(_data.date.time(), QLocale::ShortFormat));
+		? Ui::FormatDateTimeSavedFrom(_data.date, seconds)
+		: Ui::FormatTime(_data.date.time(), seconds));
 	const auto afterAuthor = prefix + date;
 	const auto afterAuthorWidth = st::msgDateFont->width(afterAuthor);
 	const auto authorWidth = st::msgDateFont->width(author);
 	const auto maxWidth = st::maxSignatureSize;
-	_authorElided = !author.isEmpty()
-		&& (authorWidth + afterAuthorWidth > maxWidth);
+	_authorElided = !_data.author.isEmpty()
+		&& (author.isEmpty() || authorWidth + afterAuthorWidth > maxWidth);
 	const auto name = _authorElided
 		? st::msgDateFont->elided(author, maxWidth - afterAuthorWidth)
 		: author;
@@ -551,13 +568,17 @@ void BottomInfo::layoutDateText() {
 }
 
 void BottomInfo::layoutViewsText() {
-	if (!_data.views || (_data.flags & Data::Flag::Sending)) {
+	if (!_data.views
+		|| (_data.flags & Data::Flag::Sending)
+		|| Nagram::Get(Core::App().settings(), Nagram::Option::HideMessageViews)) {
 		_views.clear();
 		return;
 	}
 	_views.setText(
 		st::msgDateTextStyle,
-		Lang::FormatCountToShort(std::max(*_data.views, 1)).string,
+		Nagram::Get(Core::App().settings(), Nagram::Option::ExactMessageCounters)
+			? Lang::FormatCountDecimal(std::max(*_data.views, 1))
+			: Lang::FormatCountToShort(std::max(*_data.views, 1)).string,
 		Ui::NameTextOptions());
 }
 
@@ -572,7 +593,9 @@ void BottomInfo::layoutRepliesText() {
 	}
 	_replies.setText(
 		st::msgDateTextStyle,
-		Lang::FormatCountToShort(*_data.replies).string,
+		Nagram::Get(Core::App().settings(), Nagram::Option::ExactMessageCounters)
+			? Lang::FormatCountDecimal(*_data.replies)
+			: Lang::FormatCountToShort(*_data.replies).string,
 		Ui::NameTextOptions());
 }
 
@@ -750,7 +773,14 @@ BottomInfo::Data BottomInfoDataFromMessage(not_null<Message*> message) {
 	if (!forwarded) {
 		return result;
 	}
-	if (forwarded->savedFromMsgId && forwarded->savedFromDate) {
+	if (forwarded->originalDate
+		&& !item->externalReply()
+		&& Nagram::Get(
+			Core::App().settings(),
+			Nagram::Option::ShowForwardedMessageDate)) {
+		result.date = base::unixtime::parse(forwarded->originalDate);
+		result.flags |= Flag::ForwardedDate;
+	} else if (forwarded->savedFromMsgId && forwarded->savedFromDate) {
 		result.date = base::unixtime::parse(forwarded->savedFromDate);
 		result.flags |= Flag::ForwardedDate;
 	} else if (forwarded->originalDate

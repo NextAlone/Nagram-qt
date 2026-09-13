@@ -485,7 +485,8 @@ private:
 	bool sendExistingDocument(
 		not_null<DocumentData*> document,
 		Api::MessageToSend messageToSend,
-		std::optional<MsgId> localId);
+		std::optional<MsgId> localId,
+		bool confirmed = false);
 	void sendExistingPhoto(not_null<PhotoData*> photo);
 	bool sendExistingPhoto(
 		not_null<PhotoData*> photo,
@@ -497,7 +498,8 @@ private:
 		std::shared_ptr<InlineBots::Result> result,
 		not_null<UserData*> bot,
 		Api::SendOptions options,
-		std::optional<MsgId> localMessageId);
+		std::optional<MsgId> localMessageId,
+		bool confirmed = false);
 
 	void validateSubsectionTabs() override;
 	void updateSubsectionTabsGeometry();

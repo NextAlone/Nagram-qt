@@ -11,7 +11,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_send_action.h"
 #include "data/data_forum_topic.h"
 #include "data/data_session.h"
+#include "core/application.h"
+#include "core/core_settings.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "history/history.h"
 #include "lang/lang_instance.h" // Instance::supportChoosingStickerReplacement
 #include "lang/lang_keys.h"
@@ -148,6 +151,12 @@ bool SendActionPainter::paint(
 		int outerWidth,
 		style::color color,
 		crl::time ms) {
+	if (_history->peer->isUser()
+		&& Nagram::Get(
+			Core::App().settings(),
+			Nagram::Option::HidePrivateChatActivities)) {
+		return false;
+	}
 	if (_sendActionAnimation) {
 		const auto animationWidth = _sendActionAnimation.width();
 		const auto extraAnimationWidth = _animationLeft

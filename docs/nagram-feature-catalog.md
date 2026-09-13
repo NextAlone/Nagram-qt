@@ -16,7 +16,7 @@
 | 桌面补充配置（含隐私与截图） | 121 |
 | 合计 | 530 |
 
-条件纳入 27；纳入/合并 422；排除 71；复用上游 10。这些数量只针对下列四张基础表，附加模型和无开关操作不计入。
+条件纳入 28；纳入/合并 420；排除 72；复用上游 10。这些数量只针对下列四张基础表，附加模型和无开关操作不计入。
 
 ## Nagram iOS 集中偏好
 
@@ -157,7 +157,7 @@
 | N047 | 使用系统表情 | `EmojiUseDefault` | `Bool` / `false` | 纳入/合并 · [F06](nagram-settings.md#f06) |
 | N048 | 视频留言默认使用后置摄像头 | `RearVideoMessages` | `Bool` / `false` | 排除 · X02：手机专属系统/硬件接口，桌面无对应配置 |
 | N049 | 隐藏“全部对话” | `HideAllTab` | `Bool` / `false` | 纳入/合并 · [F02](nagram-settings.md#f02) |
-| N050 | 不要发送我的输入状态 | `DisableChatAction` | `Bool` / `false` | 纳入/合并 · [F03](nagram-settings.md#f03) |
+| N050 | 不要发送我的输入状态 | `DisableChatAction` | `Bool` / `false` | 纳入/合并 · [F11](nagram-settings.md#f11)，P3-01；发送策略，不是本地显示 |
 | N051 | 排序：未读优先 | `sort_by_unread` | `Bool` / `false` | 纳入/合并 · [F02](nagram-settings.md#f02) |
 | N052 | 排序：未静音优先 | `sort_by_unmuted` | `Bool` / `true` | 纳入/合并 · [F02](nagram-settings.md#f02) |
 | N053 | 排序：用户优先 | `sort_by_user` | `Bool` / `true` | 纳入/合并 · [F02](nagram-settings.md#f02) |
@@ -208,7 +208,7 @@
 | N098 | 转发后发送评论 | `SendCommentAfterForward` | `Bool` / `true` | 纳入/合并 · [F05](nagram-settings.md#f05) |
 | N099 | 不要发送问候贴纸 | `DontSendGreetingSticker` | `Bool` / `false` | 纳入/合并 · [F06](nagram-settings.md#f06) |
 | N100 | 隐藏贴纸发送时间 | `HideTimeForSticker` | `Bool` / `false` | 纳入/合并 · [F06](nagram-settings.md#f06) |
-| N101 | GIF 显示为视频 | `TakeGIFasVideo` | `Bool` / `false` | 纳入/合并 · [F06](nagram-settings.md#f06) |
+| N101 | GIF 播放使用视频控制条 | `TakeGIFasVideo` | `Bool` / `false` | 纳入/合并 · [F06](nagram-settings.md#f06) |
 | N102 | 最近贴纸数量上限 | `maxRecentStickerCount` | `Int` / `20` | 纳入/合并 · [F06](nagram-settings.md#f06) |
 | N103 | 禁用滑动到下个未读频道 | `disableSwipeToNextChannel` | `Bool` / `true` | 纳入/合并 · [F02](nagram-settings.md#f02) |
 | N104 | 禁用远程表情符号交互 | `disableRemoteEmojiInteractions` | `Bool` / `true` | 纳入/合并 · [F06](nagram-settings.md#f06) |
@@ -446,7 +446,7 @@
 | A202 | 紧凑消息菜单条目 | `CompactMessageMenuOptions` | `String` / `""` | 纳入/合并 · [F05](nagram-settings.md#f05) |
 | A203 | 隐藏消息菜单条目 | `HiddenMessageMenuOptions` | `String` / `""` | 纳入/合并 · [F05](nagram-settings.md#f05) |
 | A204 | 转发时显示最近会话 | `ShowRecentForwardTab` | `Bool` / `false` | 纳入/合并 · [F02](nagram-settings.md#f02) |
-| A205 | 禁用资料页大头像按钮背景模糊 | `DisableProfileAvatarBlur` | `Bool` / `false` | 纳入/合并 · [F01](nagram-settings.md#f01) |
+| A205 | 禁用资料页大头像按钮背景模糊 | `DisableProfileAvatarBlur` | `Bool` / `false` | 排除 · X04：Android ProfileGalleryBlurView 专属背景；Qt 资料页没有该模糊层 |
 
 ## 桌面补充配置
 
@@ -568,7 +568,7 @@
 | D112 | 全局：语音发送确认 | `voiceConfirmation` | `bool` / `false` | 纳入/合并 · [F06](nagram-settings.md#f06) |
 | D113 | 全局：圆形视频发送确认 | `roundConfirmation` | `bool` / `false` | 纳入/合并 · [F06](nagram-settings.md#f06) |
 | D114 | 全局：翻译服务 | `translationProvider` | `TranslationProvider` / `Telegram` | 复用上游 · [F07](nagram-settings.md#f07) |
-| D115 | 全局：封面自适应颜色 | `adaptiveCoverColor` | `bool` / `true` | 纳入/合并 · [F01](nagram-settings.md#f01) |
+| D115 | 音乐封面自适应颜色 | `adaptiveCoverColor` | `bool` / `true` | 条件纳入 · [F06](nagram-settings.md#f06)：依赖音乐封面获取后端，随 P3-07 评估 |
 | D116 | 全局：修正链接预览 | `improveLinkPreviews` | `bool` / `false` | 纳入/合并 · [F16](nagram-settings.md#f16) |
 | D117 | 全局：崩溃报告 | `crashReporting` | `bool` / `true` | 条件纳入 · [F17](nagram-settings.md#f17) |
 | D118 | 全局：头像圆角 | `avatarCorners` | `int` / `23` | 纳入/合并 · [F01](nagram-settings.md#f01) |

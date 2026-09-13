@@ -10,6 +10,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_text_entities.h"
 #include "base/random.h"
 #include "base/unixtime.h"
+#include "core/application.h"
+#include "nagram/nagram_text.h"
 #include "data/business/data_shortcut_messages.h"
 #include "data/data_document.h"
 #include "data/data_photo.h"
@@ -244,6 +246,7 @@ void SendExistingMedia(
 		TextUtilities::ConvertTextTagsToEntities(message.textWithTags.tags)
 	};
 	TextUtilities::Trim(caption);
+	caption = Nagram::PrepareText(Core::App().settings(), caption, false);
 	auto sentEntities = EntitiesToMTP(
 		session,
 		caption.entities,
@@ -1008,6 +1011,10 @@ struct ConfirmedLocalFile {
 		history,
 		session->user()).flags;
 	TextUtilities::PrepareForSending(caption, prepareFlags);
+	caption = Nagram::PrepareText(
+		Core::App().settings(),
+		caption,
+		file->to.replaceMediaOf != 0);
 	TextUtilities::Trim(caption);
 	return caption;
 }

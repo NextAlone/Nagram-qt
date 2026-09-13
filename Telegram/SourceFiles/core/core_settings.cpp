@@ -1305,6 +1305,22 @@ void Settings::addFromSerialized(const QByteArray &serialized) {
 	_notificationsVolume = notificationsVolume;
 }
 
+void Settings::applyPrefChanges(
+		const base::flat_map<QByteArray, std::optional<QByteArray>> &changes) {
+	auto updated = _prefs;
+	for (const auto &[key, value] : changes) {
+		if (value) {
+			updated[key] = *value;
+		} else {
+			updated.remove(key);
+		}
+	}
+	if (updated != _prefs) {
+		_prefs = std::move(updated);
+		_saveDelayed.fire({});
+	}
+}
+
 void Settings::clearPref(std::string_view key) {
 	const auto i = _prefs.find(QByteArray(key.data(), key.size()));
 	if (i == end(_prefs)) {

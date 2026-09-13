@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_todo_list.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "base/unixtime.h"
 #include "core/application.h"
 #include "core/click_handler_types.h"
@@ -844,11 +846,11 @@ bool TodoList::hasHeavyPart() const {
 
 void TodoList::hideSpoilers() {
 	if (_title.hasSpoilers()) {
-		_title.setSpoilerRevealed(false, anim::type::instant);
+		_title.setSpoilerRevealed(parent()->spoilersRevealed(), anim::type::instant);
 	}
 	for (auto &task : _tasks) {
 		if (task.text.hasSpoilers()) {
-			task.text.setSpoilerRevealed(false, anim::type::instant);
+			task.text.setSpoilerRevealed(parent()->spoilersRevealed(), anim::type::instant);
 		}
 	}
 }

@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history.h"
+#include "nagram/nagram_profile.h"
 
 #include "history/view/history_view_element.h"
 #include "history/view/history_view_item_preview.h"
@@ -166,7 +167,7 @@ History::History(not_null<Data::Session*> owner, PeerId peerId)
 : Thread(owner, Type::History)
 , peer(owner->peer(peerId))
 , _delegateMixin(HistoryInner::DelegateMixin())
-, _chatListNameSortKey(TextUtilities::NameSortKey(peer->name()))
+, _chatListNameSortKey(TextUtilities::NameSortKey(Nagram::PeerDisplayName(peer)))
 , _sendActionPainter(this) {
 	Thread::setMuted(owner->notifySettings().isMuted(peer));
 
@@ -2891,10 +2892,7 @@ bool History::chatListMessageKnown() const {
 }
 
 const QString &History::chatListName() const {
-	if (const auto broadcast = peer->monoforumBroadcast()) {
-		return broadcast->name();
-	}
-	return peer->name();
+	return Nagram::PeerDisplayName(peer);
 }
 
 const QString &History::chatListNameSortKey() const {
@@ -2902,7 +2900,7 @@ const QString &History::chatListNameSortKey() const {
 }
 
 void History::refreshChatListNameSortKey() {
-	_chatListNameSortKey = TextUtilities::NameSortKey(peer->name());
+	_chatListNameSortKey = TextUtilities::NameSortKey(chatListName());
 }
 
 const base::flat_set<QString> &History::chatListNameWords() const {

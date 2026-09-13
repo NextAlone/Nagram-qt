@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_badge.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "data/data_changes.h"
 #include "data/data_emoji_statuses.h"
 #include "data/data_peer.h"
@@ -63,6 +66,10 @@ Ui::RpWidget *Badge::widget() const {
 }
 
 void Badge::setContent(Content content) {
+	if (content.badge != BadgeType::BotVerified
+		&& Nagram::Get(Core::App().settings(), Nagram::Option::HidePremiumBadges)) {
+		content.emojiStatusId = {};
+	}
 	if (!(_allowed & content.badge)
 		|| (!_session->premiumBadgesShown()
 			&& content.badge == BadgeType::Premium)) {

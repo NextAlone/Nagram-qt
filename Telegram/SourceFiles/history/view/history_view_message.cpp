@@ -58,6 +58,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "mainwidget.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "settings/sections/settings_premium.h"
 #include "ui/text/text_options.h"
 #include "ui/painter.h"
@@ -779,7 +780,8 @@ bool Message::prepareRichPageTextRect(QRect &trect) const {
 	if (_reactions && !reactionsInBubble) {
 		g.setHeight(g.height() - st::mediaInBubbleSkip - _reactions->height());
 	}
-	if (const auto keyboard = item->inlineReplyKeyboard()) {
+	if (const auto keyboard = nagramFilteredContent()
+			? nullptr : item->inlineReplyKeyboard()) {
 		g.setHeight(
 			g.height()
 			- st::msgBotKbButton.margin
@@ -1188,7 +1190,8 @@ void Message::animateReaction(Ui::ReactionFlyAnimationArgs &&args) {
 		return;
 	}
 
-	const auto keyboard = item->inlineReplyKeyboard();
+	const auto keyboard = nagramFilteredContent()
+		? nullptr : item->inlineReplyKeyboard();
 	auto keyboardHeight = 0;
 	if (keyboard) {
 		keyboardHeight = keyboard->naturalHeight();
@@ -1236,7 +1239,8 @@ QRect Message::effectIconGeometry() const {
 	const auto bubble = drawBubble();
 	const auto reactionsInBubble = _reactions && embedReactionsInBubble();
 	const auto mediaDisplayed = media && media->isDisplayed();
-	const auto keyboard = item->inlineReplyKeyboard();
+	const auto keyboard = nagramFilteredContent()
+		? nullptr : item->inlineReplyKeyboard();
 	auto keyboardHeight = 0;
 	if (keyboard) {
 		keyboardHeight = keyboard->naturalHeight();
@@ -1784,7 +1788,8 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 		const auto reactionsHeight = st::mediaInBubbleSkip + _reactions->height();
 		gForIntervals.setHeight(gForIntervals.height() - reactionsHeight);
 	}
-	const auto keyboard = item->inlineReplyKeyboard();
+	const auto keyboard = nagramFilteredContent()
+		? nullptr : item->inlineReplyKeyboard();
 	if (keyboard) {
 		const auto keyboardHeight = st::msgBotKbButton.margin + keyboard->naturalHeight();
 		gForIntervals.setHeight(gForIntervals.height() - keyboardHeight);
@@ -3934,7 +3939,8 @@ TextState Message::textState(
 		}
 	}
 
-	const auto keyboard = item->inlineReplyKeyboard();
+	const auto keyboard = nagramFilteredContent()
+		? nullptr : item->inlineReplyKeyboard();
 	auto keyboardHeight = 0;
 	if (keyboard) {
 		keyboardHeight = keyboard->naturalHeight();
@@ -4847,7 +4853,8 @@ void Message::updatePressed(QPoint point) {
 		g.setHeight(g.height() - reactionsHeight);
 	}
 
-	const auto keyboard = item->inlineReplyKeyboard();
+	const auto keyboard = nagramFilteredContent()
+		? nullptr : item->inlineReplyKeyboard();
 	if (keyboard) {
 		auto keyboardHeight = st::msgBotKbButton.margin + keyboard->naturalHeight();
 		g.setHeight(g.height() - keyboardHeight);
@@ -5069,7 +5076,8 @@ SelectedQuote Message::selectedQuote(TextSelection selection) const {
 		const auto textSelection = mediaBefore
 			? media->skipSelection(selection)
 			: selection;
-		return FindSelectedQuote(text(), textSelection, item);
+		return FindSelectedQuote(text(), textSelection, item,
+			[=](TextSelection selection) { return readingToOriginal(selection); });
 	} else if (const auto media = this->media()) {
 		if (media->isDisplayed() || isHiddenByGroup()) {
 			return media->selectedQuote(selection);
@@ -5102,7 +5110,8 @@ TextSelection Message::selectionFromQuote(
 		const auto media = this->media();
 		const auto mediaDisplayed = media && media->isDisplayed();
 		const auto mediaBefore = mediaDisplayed && invertMedia();
-		const auto result = FindSelectionFromQuote(text(), quote);
+		const auto result = FindSelectionFromQuote(text(), quote,
+			[=](TextSelection selection) { return readingToDisplay(selection); });
 		return mediaBefore ? media->unskipSelection(result) : result;
 	} else if (const auto media = this->media()) {
 		if (media->isDisplayed() || isHiddenByGroup()) {
@@ -5289,6 +5298,9 @@ Reactions::ButtonParameters Message::reactionButtonParameters(
 		QPoint position,
 		const TextState &reactionState) const {
 	using namespace Reactions;
+	if (Nagram::ReactionsHidden(Core::App().settings(), data()->history()->peer)) {
+		return {};
+	}
 	auto result = ButtonParameters{ .context = data()->fullId() };
 	const auto outsideBubble = (!_comments && !embedReactionsInBubble());
 	const auto geometry = countGeometry();
@@ -5794,7 +5806,8 @@ bool Message::hasFromName() const {
 }
 
 bool Message::displayFromName() const {
-	if (!hasFromName() || isAttachedToPrevious() || data()->isSponsored()) {
+	if (delegate()->elementHideSenderNames()
+		|| !hasFromName() || isAttachedToPrevious() || data()->isSponsored()) {
 		return false;
 	}
 	return !Has<PsaTooltipState>();
@@ -5994,6 +6007,9 @@ std::optional<QSize> Message::rightActionSize() const {
 }
 
 bool Message::displayFastShare() const {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideQuickShare)) {
+		return false;
+	}
 	const auto item = data();
 	const auto peer = item->history()->peer;
 	if (!item->allowsForward() || IsAnchoredEphemeral(item)) {
@@ -6526,8 +6542,11 @@ Ui::BubbleRounding Message::countMessageRounding() const {
 	const auto smallBottom = isBubbleAttachedToNext();
 	const auto media = smallBottom ? nullptr : this->media();
 	const auto item = data();
-	const auto keyboard = item->inlineReplyKeyboard();
-	const auto skipTail = smallBottom
+	const auto keyboard = nagramFilteredContent()
+		? nullptr : item->inlineReplyKeyboard();
+	const auto skipTail = Nagram::Get(
+		Core::App().settings(), Nagram::Option::HideBubbleTail)
+		|| smallBottom
 		|| (media && media->skipBubbleTail())
 		|| (keyboard != nullptr)
 		|| item->isFakeAboutView()
@@ -6610,7 +6629,15 @@ int Message::resizeContentGetHeight(int newWidth) {
 		}
 	}
 	accumulate_min(contentWidth, maxWidth());
-	_bubbleWidthLimit = (UnlimitedMessageWidth.value() && !mediaDisplayed)
+	const auto wide = UnlimitedMessageWidth.value()
+		|| (item->history()->peer->isBroadcast()
+			&& Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::WideChannelPosts));
+	const auto widthPercent = Nagram::MessageWidth(Core::App().settings());
+	_bubbleWidthLimit = (widthPercent && !mediaDisplayed)
+		? std::max(st::msgMinWidth, st::msgMaxWidth * widthPercent / 100)
+		: (wide && !mediaDisplayed)
 		? 0x3FFFFFF
 		: std::max({
 			st::msgMaxWidth,
@@ -6821,7 +6848,8 @@ int Message::resizeContentGetHeight(int newWidth) {
 		}
 	}
 
-	if (const auto keyboard = item->inlineReplyKeyboard()) {
+	if (const auto keyboard = nagramFilteredContent()
+			? nullptr : item->inlineReplyKeyboard()) {
 		const auto keyboardHeight = st::msgBotKbButton.margin + keyboard->naturalHeight();
 		newHeight += keyboardHeight;
 		keyboard->resize(contentWidth, keyboardHeight - st::msgBotKbButton.margin);
@@ -7129,6 +7157,9 @@ bool Message::invertMedia() const {
 }
 
 bool Message::hasVisibleText() const {
+	if (nagramFilteredContent()) {
+		return true;
+	}
 	const auto textItem = this->textItem();
 	if (!textItem) {
 		return false;

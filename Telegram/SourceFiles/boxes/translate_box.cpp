@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/translate_box.h"
 #include "boxes/translate_box_content.h"
 #include "lang/translate_provider.h"
+#include "nagram/nagram_translation.h"
 
 #include "base/weak_ptr.h"
 #include "core/application.h"
@@ -427,14 +428,16 @@ void TranslateBox(
 		TextWithEntities text,
 		bool hasCopyRestriction) {
 	struct State {
-		State(not_null<Main::Session*> session)
-		: provider(CreateTranslateProvider(session)) {
+		State(not_null<Main::Session*> session, Fn<void(QString)> error)
+		: provider(Nagram::CreateInteractiveTranslateProvider(session, std::move(error))) {
 		}
 
 		std::unique_ptr<TranslateProvider> provider;
 		rpl::variable<LanguageId> to;
 	};
-	const auto state = box->lifetime().make_state<State>(&peer->session());
+	const auto state = box->lifetime().make_state<State>(
+		&peer->session(),
+		crl::guard(box, [=](QString error) { box->showToast(error); }));
 	if (IsServerMsgId(msgId) && state->provider->supportsMessageId()) {
 		if (const auto item = peer->owner().message(peer->id, msgId)) {
 			if (const auto page = item->richPage()) {

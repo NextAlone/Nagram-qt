@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_element.h"
 
+#include "ui/text/format_values.h"
+
 #include "apiwrap.h"
 #include "api/api_transcribes.h"
 #include "history/view/history_view_service_message.h"
@@ -32,6 +34,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item_components.h"
 #include "history/history_item_helpers.h"
 #include "data/data_channel.h"
+#include "data/data_document.h"
 #include "data/data_session.h"
 #include "iv/iv_cached_media.h"
 #include "iv/iv_rich_page.h"
@@ -43,6 +46,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/ui_integration.h"
 #include "main/main_app_config.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_reading.h"
+#include "nagram/nagram_filters.h"
 #include "spellcheck/spellcheck_highlight_syntax.h"
 #include "chat_helpers/stickers_emoji_pack.h"
 #include "payments/payments_reaction_process.h" // TryAddingPaidReaction.
@@ -749,6 +755,13 @@ QString DateTooltipText(not_null<Element*> view) {
 	if (const auto stars = item->out() ? item->starsPaid() : 0) {
 		dateText += '\n' + tr::lng_you_paid_stars(tr::now, lt_count, stars);
 	}
+	if (IsServerMsgId(item->id)
+		&& Nagram::Get(Core::App().settings(), Nagram::Option::ShowMessageId)) {
+		dateText += '\n' + tr::lng_nagram_message_id(
+			tr::now,
+			lt_id,
+			QString::number(item->id.bare));
+	}
 	return dateText;
 }
 
@@ -1360,9 +1373,21 @@ void Element::checkSpecialOnlyEmoji() {
 	}
 }
 
+bool Element::spoilersRevealed() const {
+	return delegate()->elementSpoilersRevealed().value_or(
+		Nagram::Get(Core::App().settings(), Nagram::Option::RevealSpoilers));
+}
+
+bool Element::mediaSpoilersRevealed() const {
+	const auto item = data();
+	return spoilersRevealed() && !item->isMediaSensitive()
+		&& !item->isTtlCoveredMedia()
+		&& !(item->media() && item->media()->invoice());
+}
+
 void Element::hideSpoilers() {
 	if (_text.hasSpoilers()) {
-		_text.setSpoilerRevealed(false, anim::type::instant);
+		_text.setSpoilerRevealed(spoilersRevealed(), anim::type::instant);
 	}
 	if (_media) {
 		_media->hideSpoilers();
@@ -1503,7 +1528,13 @@ bool Element::isTopicRootReply() const {
 }
 
 bool Element::hidesBottomInfo() const {
-	return data()->isWelcomeTemplate();
+	const auto document = media() ? media()->getDocument() : nullptr;
+	return data()->isWelcomeTemplate()
+		|| (document
+			&& document->sticker()
+			&& Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::HideStickerTimestamp));
 }
 
 int Element::skipBlockWidth() const {
@@ -1622,6 +1653,25 @@ void Element::refreshMedia(Element *replacing) {
 	_flags &= ~Flag::HiddenByGroup;
 
 	const auto item = data();
+	_nagramFilteredContent = nullptr;
+	if (!item->nagramOriginalShown()) {
+		const auto check = [&](not_null<HistoryItem*> part) {
+			const auto filtered = Nagram::FilterMessage(part);
+			if (filtered && (!filtered->ready || filtered->result.hidden)) {
+				_nagramFilteredContent = filtered;
+			}
+		};
+		check(item);
+		if (const auto group = history()->owner().groups().find(item)) {
+			for (const auto part : group->items) {
+				check(part);
+			}
+		}
+	}
+	if (_nagramFilteredContent) {
+		_media = nullptr;
+		return;
+	}
 	if (!item->computeUnavailableReason().isEmpty()) {
 		_media = nullptr;
 		return;
@@ -1645,7 +1695,9 @@ void Element::refreshMedia(Element *replacing) {
 		}
 		_media = media->createView(this, replacing);
 	} else if (item->showSimilarChannels()) {
-		_media = std::make_unique<SimilarChannels>(this);
+		_media = Nagram::Get(Core::App().settings(), Nagram::Option::HideRecommendedChannels)
+			? nullptr
+			: std::make_unique<SimilarChannels>(this);
 	} else if (isOnlyCustomEmoji()
 		&& Core::App().settings().largeEmoji()
 		&& !item->isSponsored()) {
@@ -2098,6 +2150,11 @@ void Element::validateText() {
 	// Media::itemForText may initialize data within the object.
 	_textItem = _media ? _media->itemForText() : item.get();
 
+	if (_nagramFilteredContent) {
+		setTextWithLinks({}, {}, true);
+		clearRichPage();
+		return;
+	}
 	const auto &summary = item->summaryEntry();
 	const auto summaryShownWas = (_flags & Flag::SummaryShown) != 0;
 	const auto summaryShownNow = !summary.result.empty() && summary.shown;
@@ -2156,7 +2213,7 @@ void Element::validateText() {
 		if (!unavailable.isEmpty()) {
 			setTextWithLinks(tr::italic(unavailable));
 		} else {
-			setTextWithLinks(_textItem->translatedTextWithLocalEntities());
+			setTextWithLinks(_textItem->translatedTextWithLocalEntities(), {}, true);
 			richPage = _textItem->translatedRichPage();
 		}
 	}
@@ -2165,19 +2222,50 @@ void Element::validateText() {
 		&& item->computeUnavailableReason().isEmpty()) {
 		richPage = _textItem->translatedRichPage();
 	}
+	if (_readingProjection && _textItem
+		&& (_readingProjection->text.text != _textItem->translatedText().text
+			|| _readingProjection->text.entities != _textItem->translatedText().entities)) {
+		richPage = nullptr;
+	}
 	ensureRichPage(std::move(richPage));
 }
 
 void Element::setTextWithLinks(
 		const TextWithEntities &text,
-		const std::vector<ClickHandlerPtr> &links) {
+		const std::vector<ClickHandlerPtr> &links,
+		bool transform) {
+	_readingProjection = nullptr;
+	if (transform && !_textItem->nagramOriginalShown()) {
+		const auto filtered = _nagramFilteredContent
+			? _nagramFilteredContent : Nagram::FilterMessage(_textItem);
+		if (filtered) {
+			_readingProjection = std::make_unique<Nagram::ReadingProjection>(
+				Nagram::FilterProjection(*filtered));
+		}
+		if (!_textItem->translatedRichPage()
+			&& (!filtered || (filtered->ready && !filtered->result.hidden))) {
+			if (auto projected = Nagram::ProjectReading(Core::App().settings(),
+					_readingProjection ? _readingProjection->text : text)) {
+				_readingProjection = std::make_unique<Nagram::ReadingProjection>(
+					_readingProjection
+						? Nagram::ComposeReading(std::move(*_readingProjection), std::move(*projected))
+						: std::move(*projected));
+			}
+		}
+	}
 	const auto context = Core::TextContext({
 		.session = &history()->session(),
 		.repaint = [=] { customEmojiRepaint(); },
 	});
 	if (_flags & Flag::ServiceMessage) {
 		const auto &options = Ui::ItemTextServiceOptions();
-		_text.setMarkedText(st::serviceTextStyle, text, options, context);
+		auto displayText = text;
+		if (!displayText.empty() && data()->date() > 0
+			&& Nagram::Get(Core::App().settings(), Nagram::Option::ShowServiceTime)) {
+			displayText.text += u" · "_q + Ui::FormatTime(dateTime().time(),
+				Nagram::Get(Core::App().settings(), Nagram::Option::SecondsInMessages));
+		}
+		_text.setMarkedText(st::serviceTextStyle, displayText, options, context);
 		auto linkIndex = 0;
 		for (const auto &link : links) {
 			// Link indices start with 1.
@@ -2187,7 +2275,8 @@ void Element::setTextWithLinks(
 		const auto item = data();
 		const auto &options = Ui::ItemTextOptions(item);
 		clearSpecialOnlyEmoji();
-		_text.setMarkedText(st::messageTextStyle, text, options, context);
+		_text.setMarkedText(st::messageTextStyle,
+			_readingProjection ? _readingProjection->text : text, options, context);
 		if (!item->_text.empty() && _text.isEmpty()){
 			// If server has allowed some text that we've trim-ed entirely,
 			// just replace it with something so that UI won't look buggy.
@@ -2857,6 +2946,11 @@ void Element::setupReactions(Element *replacing) {
 
 void Element::refreshReactions() {
 	using namespace Reactions;
+	if (delegate()->elementHideReactions()
+		|| Nagram::ReactionsHidden(Core::App().settings(), data()->history()->peer)) {
+		setReactions(nullptr);
+		return;
+	}
 	auto reactionsData = InlineListDataFromMessage(this);
 	if (reactionsData.reactions.empty()) {
 		setReactions(nullptr);
@@ -3206,10 +3300,19 @@ bool Element::selectionContains(
 		&& selection.contains(state.selectionCursor);
 }
 
+TextSelection Element::readingToOriginal(TextSelection selection) const {
+	return _readingProjection ? _readingProjection->toOriginal(selection) : selection;
+}
+
+TextSelection Element::readingToDisplay(TextSelection selection) const {
+	return _readingProjection ? _readingProjection->toDisplay(selection) : selection;
+}
+
 SelectedQuote Element::FindSelectedQuote(
 		const Ui::Text::String &text,
 		TextSelection selection,
-		not_null<HistoryItem*> item) {
+		not_null<HistoryItem*> item,
+		Fn<TextSelection(TextSelection)> toOriginal) {
 	if (selection.to > text.length()) {
 		return {};
 	}
@@ -3235,6 +3338,9 @@ SelectedQuote Element::FindSelectedQuote(
 				int(modified.from),
 				int(modified.to) - int(modification.added)));
 		}
+	}
+	if (toOriginal) {
+		modified = toOriginal(modified);
 	}
 	auto result = item->originalText();
 	if (modified.empty() || modified.to > result.text.size()) {
@@ -3278,7 +3384,8 @@ SelectedQuote Element::FindSelectedQuote(
 
 TextSelection Element::FindSelectionFromQuote(
 		const Ui::Text::String &text,
-		const SelectedQuote &quote) {
+		const SelectedQuote &quote,
+		Fn<TextSelection(TextSelection)> toDisplay) {
 	Expects(quote.item != nullptr);
 
 	const auto &rich = quote.highlight.quote;
@@ -3287,9 +3394,8 @@ TextSelection Element::FindSelectionFromQuote(
 	}
 	const auto &original = quote.item->originalText();
 	if (quote.highlight.quoteOffset == kSearchQueryOffsetHint) {
-		return ApplyModificationsFrom(
-			FindSearchQueryHighlight(original.text, rich.text),
-			text);
+		const auto selection = FindSearchQueryHighlight(original.text, rich.text);
+		return ApplyModificationsFrom(toDisplay ? toDisplay(selection) : selection, text);
 	}
 	const auto length = int(original.text.size());
 	const auto qlength = int(rich.text.size());
@@ -3354,7 +3460,7 @@ TextSelection Element::FindSelectionFromQuote(
 	if (result.empty()) {
 		return {};
 	}
-	return ApplyModificationsFrom(result, text);
+	return ApplyModificationsFrom(toDisplay ? toDisplay(result) : result, text);
 }
 
 Reactions::ButtonParameters Element::reactionButtonParameters(

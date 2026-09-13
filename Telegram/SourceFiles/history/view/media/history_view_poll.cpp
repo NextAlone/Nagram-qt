@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_poll.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "core/click_handler_types.h"
 #include "core/ui_integration.h" // TextContext
 #include "data/data_cloud_file.h"
@@ -4458,12 +4461,12 @@ void Poll::clickHandlerPressedChanged(
 void Poll::hideSpoilers() {
 	if (_headerPart->_description.hasSpoilers()) {
 		_headerPart->_description.setSpoilerRevealed(
-			false,
+			parent()->spoilersRevealed(),
 			anim::type::instant);
 	}
 	if (_headerPart->_solutionText.hasSpoilers()) {
 		_headerPart->_solutionText.setSpoilerRevealed(
-			false,
+			parent()->spoilersRevealed(),
 			anim::type::instant);
 	}
 }

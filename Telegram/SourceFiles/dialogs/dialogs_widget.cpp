@@ -57,6 +57,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mainwidget.h"
 #include "main/main_domain.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "main/main_session_settings.h"
 #include "api/api_authorizations.h"
 #include "api/api_chat_filters.h"
@@ -1704,6 +1705,11 @@ void Widget::setupMainMenuToggle() {
 }
 
 void Widget::setupStories() {
+	Nagram::Value(Core::App().settings(), Nagram::Option::HideStories
+	) | rpl::skip(1) | rpl::on_next([=] {
+		updateStoriesVisibility();
+	}, _stories->lifetime());
+
 	_stories->verticalScrollEvents(
 	) | rpl::on_next([=](not_null<QWheelEvent*> e) {
 		_scroll->viewportEvent(e);
@@ -1722,7 +1728,12 @@ void Widget::setupStories() {
 				rpl::combine(
 					Core::App().settings().storiesClickTooltipHiddenValue(),
 					shownValue(),
-					!rpl::mappers::_1 && rpl::mappers::_2),
+					Nagram::Value(
+						Core::App().settings(),
+						Nagram::Option::HideStories),
+					[](bool dismissed, bool shown, bool hidden) {
+						return !dismissed && shown && !hidden;
+					}),
 				hideTooltip);
 		});
 	}
@@ -2857,6 +2868,7 @@ void Widget::updateStoriesVisibility() {
 	const auto pulledDown = _scroll->position().overscroll
 		< -st::dialogsFilterSkip;
 	const auto hiddenInstant = _showAnimation
+		|| Nagram::Get(Core::App().settings(), Nagram::Option::HideStories)
 		|| _openedForum
 		|| _openedCommunity
 		|| (widthAnimation && !suggestionsAnimation)

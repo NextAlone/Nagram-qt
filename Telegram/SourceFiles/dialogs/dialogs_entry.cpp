@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/dialogs_entry.h"
 
+#include "nagram/nagram_chat_sort.h"
+
 #include "dialogs/dialogs_key.h"
 #include "dialogs/dialogs_indexed_list.h"
 #include "base/options.h"
@@ -217,6 +219,7 @@ void Entry::updateChatListSortPosition() {
 		updateChatListEntry();
 		return;
 	}
+	_nagramSortPriority = Nagram::ChatSortPriority(this);
 	const auto sortKeyByDate = DialogPosFromDate(adjustedChatListTimeId());
 	_sortKeyByDate = (owner().dialogsUnreadOnTop()
 		&& hasUnreadUnmutedForSort())
@@ -230,6 +233,20 @@ void Entry::updateChatListSortPosition() {
 		setChatListExistence(true);
 	} else {
 		_sortKeyInChatList = _sortKeyByDate = 0;
+	}
+}
+
+void Entry::refreshNagramSortPosition() {
+	if (session().supportMode() && session().settings().supportFixChatsOrder()) {
+		return;
+	}
+	const auto priority = Nagram::ChatSortPriority(this);
+	if (_nagramSortPriority == priority) {
+		return;
+	}
+	_nagramSortPriority = priority;
+	if (inChatList()) {
+		setChatListExistence(true);
 	}
 }
 
@@ -324,6 +341,8 @@ void Entry::notifyUnreadStateChange(const UnreadState &wasState) {
 	}
 	if (owner().dialogsUnreadOnTop()) {
 		updateChatListSortPosition();
+	} else {
+		refreshNagramSortPosition();
 	}
 	updateChatListEntryPostponed();
 }

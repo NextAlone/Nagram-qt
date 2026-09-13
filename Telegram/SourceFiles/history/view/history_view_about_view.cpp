@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_about_view.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "api/api_peer_colors.h"
 #include "api/api_premium.h"
 #include "api/api_sending.h"
@@ -279,6 +282,9 @@ auto GenerateChatIntro(
 		pushText({ description }, title.isEmpty()
 			? st::chatIntroTitleMargin
 			: st::chatIntroMargin);
+		if (Nagram::Get(Core::App().settings(), Nagram::Option::HideGreetingSticker)) {
+			return;
+		}
 		const auto sticker = [=] {
 			using Tag = ChatHelpers::StickerLottieSize;
 			auto sticker = data.sticker;

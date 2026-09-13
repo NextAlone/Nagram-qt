@@ -16,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_session.h"
 #include "data/stickers/data_stickers.h"
 #include "core/application.h"
+#include "nagram/nagram_settings.h"
 #include "base/options.h"
 #include "styles/style_chat_helpers.h"
 
@@ -488,7 +489,8 @@ void TabbedPanel::showStarted() {
 }
 
 bool TabbedPanel::eventFilter(QObject *obj, QEvent *e) {
-	if (TabbedPanelShowOnClick.value()) {
+	if (TabbedPanelShowOnClick.value()
+		|| Nagram::Get(Core::App().settings(), Nagram::Option::DisableEmojiHover)) {
 		return false;
 	} else if (e->type() == QEvent::Enter) {
 		otherEnter();

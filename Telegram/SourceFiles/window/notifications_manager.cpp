@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/notifications_manager.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "base/options.h"
 #include "base/platform/base_platform_info.h"
 #include "base/qt/qt_key_modifiers.h"
@@ -393,6 +395,7 @@ System::Timing System::countTiming(
 		not_null<Data::Thread*> thread,
 		crl::time minimalDelay) const {
 	auto delay = minimalDelay;
+	auto timing = Nagram::NotificationTiming::Default;
 	const auto t = base::unixtime::now();
 	const auto ms = crl::now();
 	const auto &updates = thread->session().updates();
@@ -402,9 +405,12 @@ System::Timing System::countTiming(
 	const bool otherLaterThanMe = (cOtherOnline() * 1000LL + (ms - updates.lastSetOnline()) > t * 1000LL);
 	if (!isOnline && otherNotOld && otherLaterThanMe) {
 		delay = config.notifyCloudDelay;
+		timing = Nagram::NotificationTiming::OtherDevice;
 	} else if (cOtherOnline() >= t) {
 		delay = config.notifyDefaultDelay;
 	}
+	delay = Nagram::ApplyNotificationDelay(
+		Core::App().settings(), timing, delay, minimalDelay);
 	return {
 		.delay = delay,
 		.when = ms + delay,
@@ -1084,7 +1090,8 @@ Manager::DisplayOptions Manager::getNotificationOptions(
 		HistoryItem *item,
 		Data::ItemNotificationType type) const {
 	const auto hideEverything = Core::App().passcodeLocked()
-		|| forceHideDetails();
+		|| forceHideDetails()
+		|| Nagram::Get(Core::App().settings(), Nagram::Option::PresentationMode);
 	const auto view = Core::App().settings().notifyView();
 	const auto peer = item ? item->history()->peer.get() : nullptr;
 	const auto topic = item ? item->topic() : nullptr;
@@ -1244,6 +1251,9 @@ TextWithEntities Manager::ComposePollVoteNotification(
 TextWithEntities Manager::addTargetAccountName(
 		TextWithEntities title,
 		not_null<Main::Session*> session) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::PresentationMode)) {
+		return title;
+	}
 	const auto add = [&] {
 		for (const auto &[index, account] : Core::App().domain().accounts()) {
 			if (const auto other = account->maybeSession()) {

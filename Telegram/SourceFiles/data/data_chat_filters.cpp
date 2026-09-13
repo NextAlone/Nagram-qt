@@ -7,9 +7,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_chat_filters.h"
 
+#include "nagram/nagram_folders.h"
+#include "main/main_session_settings.h"
+
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "api/api_text_entities.h"
-#include "history/history.h"
 #include "data/data_peer.h"
+#include "data/data_premium_limits.h"
 #include "data/data_user.h"
 #include "data/data_chat.h"
 #include "data/data_channel.h"
@@ -339,6 +345,10 @@ const base::flat_set<not_null<History*>> &ChatFilter::never() const {
 bool ChatFilter::contains(
 		not_null<History*> history,
 		bool ignoreFakeUnread) const {
+	if (_id && history->session().settings().managedFolders().contains(_id)
+		&& !Nagram::IsManagedPeer(history->peer)) {
+		return false;
+	}
 	const auto flag = [&] {
 		const auto peer = history->peer;
 		if (const auto user = peer->asUser()) {
@@ -704,6 +714,13 @@ void ChatFilters::applyRemove(int position) {
 	const auto i = begin(_list) + position;
 	auto filter = std::move(*i);
 	_list.erase(i);
+	auto &settings = _owner->session().settings();
+	auto managed = settings.managedFolders();
+	if (settings.managedFoldersValid() && managed.remove(filter.id())) {
+		if (settings.setManagedFolders(Nagram::SerializeManagedFolders(managed))) {
+			_owner->session().saveSettingsDelayed();
+		}
+	}
 	applyChange(filter, ChatFilter(filter.id(), {}, {}, {}, {}, {}, {}, {}));
 }
 
@@ -899,6 +916,48 @@ bool ChatFilters::archiveNeeded() const {
 
 const std::vector<ChatFilter> &ChatFilters::list() const {
 	return _list;
+}
+
+bool ChatFilters::allChatsHidden() const {
+	if (!Nagram::Get(Core::App().settings(), Nagram::Option::HideAllChatsFolder)) {
+		return false;
+	}
+	const auto limit = 1 + PremiumLimits(&_owner->session()).dialogFiltersCurrent();
+	for (auto i = 0; i < std::min(int(_list.size()), limit); ++i) {
+		if (_list[i].id()) {
+			return true;
+		}
+	}
+	return false;
+}
+
+std::vector<ChatFilter> ChatFilters::displayList() const {
+	const auto hideAll = allChatsHidden();
+	return _list | ranges::views::filter([=](const ChatFilter &filter) {
+		return !hideAll || filter.id();
+	}) | ranges::to_vector;
+}
+
+int ChatFilters::displayLimit() const {
+	const auto limit = 1 + PremiumLimits(&_owner->session()).dialogFiltersCurrent();
+	const auto all = ranges::find(_list, FilterId(0), &ChatFilter::id);
+	return limit - ((allChatsHidden() && all != end(_list)
+		&& (all - begin(_list)) < limit) ? 1 : 0);
+}
+
+void ChatFilters::saveDisplayOrder(const std::vector<FilterId> &order) {
+	if (!allChatsHidden()) {
+		saveOrder(order);
+		return;
+	}
+	Expects(order.size() == displayList().size());
+	auto full = std::vector<FilterId>();
+	full.reserve(_list.size());
+	auto i = 0;
+	for (const auto &filter : _list) {
+		full.push_back(filter.id() ? order[i++] : FilterId(0));
+	}
+	saveOrder(full);
 }
 
 FilterId ChatFilters::defaultId() const {

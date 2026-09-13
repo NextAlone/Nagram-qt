@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_values.h"
+#include "nagram/nagram_profile.h"
 
 #include "api/api_chat_participants.h"
 #include "apiwrap.h"
@@ -16,6 +17,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "countries/countries_instance.h"
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
+#include "nagram/nagram_settings.h"
+#include "ui/image/image_location.h"
 #include "ui/wrap/slide_wrap.h"
 #include "ui/text/format_values.h" // Ui::FormatPhone
 #include "ui/text/text_utilities.h"
@@ -100,7 +103,7 @@ rpl::producer<QString> NameValue(not_null<PeerData*> peer) {
 	return peer->session().changes().peerFlagsValue(
 		peer,
 		UpdateFlag::Name
-	) | rpl::map([=] { return peer->name(); });
+	) | rpl::map([=] { return Nagram::PeerDisplayName(peer); });
 }
 
 rpl::producer<QString> TitleValue(not_null<Data::ForumTopic*> topic) {
@@ -122,6 +125,36 @@ rpl::producer<int32> ColorIdValue(not_null<Data::ForumTopic*> topic) {
 		topic,
 		Data::TopicUpdate::Flag::ColorId
 	) | rpl::map([=] { return topic->colorId(); });
+}
+
+rpl::producer<TextWithEntities> ProfileIdValue(not_null<PeerData*> peer) {
+	return rpl::combine(
+		Nagram::Value(Core::App().settings(), Nagram::Option::ShowProfileId),
+		Nagram::Value(Core::App().settings(), Nagram::Option::RawProfileId)
+	) | rpl::map([=](bool shown, bool raw) {
+		return shown
+			? tr::marked(Nagram::FormatPeerId(peer->id, raw))
+			: tr::marked();
+	});
+}
+
+rpl::producer<TextWithEntities> ProfilePhotoDcValue(
+		not_null<PeerData*> peer) {
+	return rpl::combine(
+		Nagram::Value(Core::App().settings(), Nagram::Option::ShowDc),
+		peer->session().changes().peerFlagsValue(peer, UpdateFlag::Photo),
+		tr::lng_nagram_unknown()
+	) | rpl::map([=](bool shown, auto, const QString &unknown) {
+		if (!shown) {
+			return tr::marked();
+		}
+		const auto location = peer->userpicLocation();
+		const auto storage = std::get_if<StorageFileLocation>(
+			&location.file().data);
+		return tr::marked((storage && storage->dcId() > 0)
+			? QString::number(storage->dcId())
+			: unknown);
+	});
 }
 
 rpl::producer<TextWithEntities> PhoneValue(not_null<UserData*> user) {

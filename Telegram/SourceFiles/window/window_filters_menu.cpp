@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/window_filters_menu.h"
+#include "nagram/nagram_folders.h"
 
 #include "menu/menu_mark_as_read.h"
 #include "mainwindow.h"
@@ -15,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_peer_menu.h"
 #include "window/window_filters_favorite.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "base/event_filter.h"
 #include "base/options.h"
 #include "core/application.h"
@@ -157,7 +159,8 @@ void FiltersMenu::setup() {
 	const auto filters = &_session->session().data().chatsFilters();
 	rpl::combine(
 		rpl::single(rpl::empty) | rpl::then(filters->changed()),
-		std::move(premium)
+		std::move(premium),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideAllChatsFolder)
 	) | rpl::on_next([=] {
 		refresh();
 	}, _outer.lifetime());
@@ -167,6 +170,10 @@ void FiltersMenu::setup() {
 	) | rpl::filter([=](FilterId id) {
 		return (id != _activeFilterId);
 	}) | rpl::on_next([=](FilterId id) {
+		if (!id && filters->allChatsHidden()) {
+			_session->setActiveChatsFilter(filters->displayList().front().id());
+			return;
+		}
 		if (!_list) {
 			_activeFilterId = id;
 			return;
@@ -270,7 +277,7 @@ void FiltersMenu::scrollToButton(not_null<Ui::RpWidget*> widget) {
 }
 
 void FiltersMenu::applyFilterAt(int start, int delta) {
-	const auto &list = _session->session().data().chatsFilters().list();
+	const auto &list = _session->session().data().chatsFilters().displayList();
 	const auto count = int(list.size());
 	// Move focus to the folder at `start`, then in the `delta` direction,
 	// stopping at the bounds (no wrap). Arrow keys only move focus; activation
@@ -292,7 +299,7 @@ void FiltersMenu::applyFilterAt(int start, int delta) {
 }
 
 void FiltersMenu::moveToFilter(int delta) {
-	const auto &list = _session->session().data().chatsFilters().list();
+	const auto &list = _session->session().data().chatsFilters().displayList();
 	const auto count = int(list.size());
 	// Move relative to the currently focused folder, so navigation continues
 	// from a locked one (which only takes focus, without becoming active); fall
@@ -312,7 +319,7 @@ void FiltersMenu::moveToFilter(int delta) {
 
 void FiltersMenu::moveToFilterEdge(int delta) {
 	const auto count = int(
-		_session->session().data().chatsFilters().list().size());
+		_session->session().data().chatsFilters().displayList().size());
 	applyFilterAt((delta > 0) ? 0 : (count - 1), delta);
 }
 
@@ -358,13 +365,13 @@ void FiltersMenu::refresh() {
 	_reorder->clearPinnedIntervals();
 	const auto maxLimit = (reorderAll ? 1 : 0)
 		+ Data::PremiumLimits(&_session->session()).dialogFiltersCurrent();
-	const auto premiumFrom = (reorderAll ? 0 : 1) + maxLimit;
-	if (!reorderAll) {
+	const auto premiumFrom = filters->displayLimit();
+	if (!reorderAll && !filters->allChatsHidden()) {
 		_reorder->addPinnedInterval(0, 1);
 	}
 	_reorder->addPinnedInterval(
 		premiumFrom,
-		std::max(1, int(filters->list().size()) - maxLimit));
+		std::max(1, int(filters->displayList().size()) - maxLimit));
 
 	// Remember which folder holds keyboard focus so the roving Tab-stop can be
 	// re-established on its replacement after the rebuild: the new buttons are
@@ -379,11 +386,14 @@ void FiltersMenu::refresh() {
 	}
 
 	auto now = base::flat_map<int, base::unique_qptr<Ui::SideBarButton>>();
+	if (filters->allChatsHidden() && !_session->activeChatsFilterCurrent()) {
+		_session->setActiveChatsFilter(filters->displayList().front().id());
+	}
 	const auto &currentFilter = _session->activeChatsFilterCurrent();
-	for (const auto &filter : filters->list()) {
+	for (const auto &filter : filters->displayList()) {
 		const auto nextIsLocked = (now.size() >= premiumFrom);
 		if (nextIsLocked && (currentFilter == filter.id())) {
-			_session->setActiveChatsFilter(FilterId(0));
+			_session->setActiveChatsFilter(filters->displayList().front().id());
 		}
 		auto button = prepareButton(
 			_list,
@@ -604,23 +614,27 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 		}
 		rpl::combine(
 			Data::UnreadStateValue(&_session->session(), id),
-			Data::IncludeMutedCounterFoldersValue()
+			Data::IncludeMutedCounterFoldersValue(),
+			Nagram::Value(
+				Core::App().settings(),
+				Nagram::Option::HideFolderUnreadCounters)
 		) | rpl::on_next([=](
 				const Dialogs::UnreadState &state,
-				bool includeMuted) {
+				bool includeMuted,
+				bool hideCounters) {
 			const auto chats = state.chats;
 			const auto chatsMuted = state.chatsMuted;
 			const auto muted = (chatsMuted + state.marksMuted);
 			const auto count = (chats + state.marks)
 				- (includeMuted ? 0 : muted);
-			const auto string = !count
+			const auto string = (!count || hideCounters)
 				? QString()
 				: (count > 999)
 				? "99+"
 				: QString::number(count);
 			raw->setBadge(string, includeMuted && (count == muted));
 			if (!locked) {
-				raw->setAccessibleName(count
+				raw->setAccessibleName((count && !hideCounters)
 					? tr::lng_filter_unread_chats(
 						tr::now,
 						lt_count,
@@ -760,6 +774,9 @@ void FiltersMenu::showMenu(QPoint position, FilterId id) {
 			crl::guard(&_outer, [=] { EditExistingFilter(_session, id); }),
 			&st::menuIconEdit);
 
+		Nagram::AddManagedFolderAction(
+			_popupMenu.get(), &_session->session(), _session->uiShow(), id);
+
 		auto filteredChats = [=] {
 			return _session->session().data().chatsFilters().chatsList(id);
 		};
@@ -810,12 +827,12 @@ void FiltersMenu::applyReorder(
 	}
 
 	const auto filters = &_session->session().data().chatsFilters();
-	const auto &list = filters->list();
-	if (!premium()) {
-		if (list[0].id() != FilterId()) {
+	if (!premium() && !filters->allChatsHidden()) {
+		if (filters->list().front().id() != FilterId()) {
 			filters->moveAllToFront();
 		}
 	}
+	const auto list = filters->displayList();
 	Assert(oldPosition >= 0 && oldPosition < list.size());
 	Assert(newPosition >= 0 && newPosition < list.size());
 	const auto id = list[oldPosition].id();
@@ -831,7 +848,7 @@ void FiltersMenu::applyReorder(
 	base::reorder(order, oldPosition, newPosition);
 
 	_ignoreRefresh = true;
-	filters->saveOrder(order);
+	filters->saveDisplayOrder(order);
 	_ignoreRefresh = false;
 }
 

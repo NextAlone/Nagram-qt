@@ -150,7 +150,7 @@ public:
 	[[nodiscard]] int index() const {
 		return _index;
 	}
-	[[nodiscard]] uint64 sortKey(FilterId filterId) const;
+	[[nodiscard]] std::pair<uint8, uint64> sortKey(FilterId filterId) const;
 
 	// for any attached data, for example View in contacts list
 	void *attached = nullptr;

@@ -19,8 +19,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_polls.h"
 #include "styles/style_widgets.h"
 
+#include <atomic>
+
 namespace Ui {
 namespace {
+
+std::atomic<bool> SimpleQuotes = false;
 
 void EnsureCorners(
 		CornersPixmaps &corners,
@@ -34,13 +38,13 @@ void EnsureCorners(
 
 void EnsureBlockquoteCache(
 		std::unique_ptr<Text::QuotePaintCache> &cache,
-		Fn<ColorIndexValues()> values) {
-	if (cache) {
-		return;
+		Fn<ColorIndexValues()> values,
+		bool simple) {
+	if (!cache) {
+		cache = std::make_unique<Text::QuotePaintCache>();
 	}
-	cache = std::make_unique<Text::QuotePaintCache>();
 	const auto &colors = values();
-	cache->bg = colors.bg;
+	cache->bg = simple ? QColor(Qt::transparent) : colors.bg;
 	cache->outlines = colors.outlines;
 	cache->icon = colors.name;
 }
@@ -756,6 +760,14 @@ const CornersPixmaps &ChatStyle::serviceBgCornersInverted() const {
 	return _serviceBgCornersInverted;
 }
 
+void SetSimpleQuotes(bool enabled) {
+	SimpleQuotes = enabled;
+}
+
+bool ChatStyle::simpleQuotes() const {
+	return _simpleQuotes.value_or(SimpleQuotes.load());
+}
+
 const MessageStyle &ChatStyle::messageStyle(bool outbg, bool selected) const {
 	auto &result = messageStyleRaw(outbg, selected);
 	EnsureCorners(
@@ -772,11 +784,12 @@ const MessageStyle &ChatStyle::messageStyle(bool outbg, bool selected) const {
 	for (auto i = 0; i != kColorPatternsCount; ++i) {
 		EnsureBlockquoteCache(
 			result.replyCache[i],
-			[&] { return SimpleColorIndexValues(replyBar, i); });
+			[&] { return SimpleColorIndexValues(replyBar, i); }, simpleQuotes());
 		if (!result.quoteCache[i]) {
 			result.quoteCache[i] = std::make_unique<Text::QuotePaintCache>(
 				*result.replyCache[i]);
 		}
+		result.quoteCache[i]->bg = result.replyCache[i]->bg;
 	}
 
 	const auto preBgOverride = [&] {
@@ -901,7 +914,7 @@ not_null<Text::QuotePaintCache*> ChatStyle::serviceQuoteCache(
 	const auto &service = msgServiceFg()->c;
 	EnsureBlockquoteCache(
 		_serviceQuoteCache[index],
-		[&] { return SimpleColorIndexValues(service, twoColored); });
+		[&] { return SimpleColorIndexValues(service, twoColored); }, simpleQuotes());
 	return _serviceQuoteCache[index].get();
 }
 
@@ -911,7 +924,7 @@ not_null<Text::QuotePaintCache*> ChatStyle::serviceReplyCache(
 	const auto &service = msgServiceFg()->c;
 	EnsureBlockquoteCache(
 		_serviceReplyCache[index],
-		[&] { return SimpleColorIndexValues(service, twoColored); });
+		[&] { return SimpleColorIndexValues(service, twoColored); }, simpleQuotes());
 	return _serviceReplyCache[index].get();
 }
 
@@ -1020,7 +1033,7 @@ not_null<Text::QuotePaintCache*> ChatStyle::coloredCache(
 	auto &cache = caches[shift + colorIndex];
 	EnsureBlockquoteCache(cache, [&] {
 		return coloredValues(selected, colorIndex);
-	});
+	}, simpleQuotes());
 	return cache.get();
 }
 
@@ -1044,7 +1057,7 @@ not_null<Text::QuotePaintCache*> ChatStyle::collectibleCache(
 			.name = name,
 			.bg = bg,
 		};
-	});
+	}, simpleQuotes());
 	return cache.get();
 }
 

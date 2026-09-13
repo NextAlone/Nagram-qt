@@ -69,6 +69,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/storage_account.h"
 #include "apiwrap.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "main/main_session_settings.h"
 #include "menu/menu_mark_as_read.h"
 #include "menu/menu_sponsored.h"
@@ -358,6 +359,26 @@ InnerWidget::InnerWidget(
 		dialogRowReplaced(r.old, r.now);
 	}, lifetime());
 
+	Nagram::Value(Core::App().settings(), Nagram::Option::HidePrivateChatActivities
+	) | rpl::skip(1) | rpl::on_next([=] {
+		update();
+	}, lifetime());
+	Nagram::Value(Core::App().settings(), Nagram::Option::PresentationMode
+	) | rpl::skip(1) | rpl::on_next([=] {
+		update();
+	}, lifetime());
+	rpl::combine(
+		Nagram::Value(Core::App().settings(), Nagram::Option::CompactChatList),
+		Nagram::ChatPreviewLinesValue(Core::App().settings())
+	) | rpl::skip(1) | rpl::on_next([=] {
+		_geometryInited = false;
+		setNarrowRatio(_narrowRatio);
+		if (!_filterResults.empty()) {
+			refreshFilterResults();
+		}
+		refreshWithCollapsedRows();
+	}, lifetime());
+
 	session().data().sendActionManager().animationUpdated(
 	) | rpl::on_next([=](
 			const Data::SendActionManager::AnimationUpdate &update) {
@@ -398,6 +419,8 @@ InnerWidget::InnerWidget(
 
 	rpl::merge(
 		session().settings().archiveCollapsedChanges() | rpl::map_to(false),
+		Nagram::Value(Core::App().settings(), Nagram::Option::ShowArchiveInFolders)
+			| rpl::skip(1) | rpl::map_to(false),
 		session().data().chatsFilters().changed() | rpl::map_to(true),
 		session().data().chatsFilters().tagsEnabledChanges(
 		) | rpl::map_to(true)
@@ -680,6 +703,11 @@ void InnerWidget::refreshWithCollapsedRows(bool toTop) {
 		_skipTopDialog = false;
 	}
 
+	if (_filterId > 0 && Nagram::Get(
+		Core::App().settings(), Nagram::Option::ShowArchiveInFolders)) {
+		_collapsedRows.push_back(std::make_unique<CollapsedRow>(
+			session().data().folder(Data::Folder::kId)));
+	}
 	Assert(!needCollapsedRowsRefresh());
 	refresh(toTop);
 
@@ -1066,7 +1094,9 @@ void InnerWidget::paintEvent(QPaintEvent *e) {
 			}
 		}
 
-		context.st = (forum || monoforum) ? &st::forumDialogRow : _st.get();
+		context.st = context.narrow
+			? ((forum || monoforum) ? &st::forumDialogRow : _st.get())
+			: &Row::ComputeSt(row->entry(), context.filter);
 
 		const auto videoUserpic = validateVideoUserpic(row);
 		const auto cacheRatio = style::DevicePixelRatio();
@@ -4721,6 +4751,9 @@ void InnerWidget::peerSearchReceived(Api::PeerSearchResult result) {
 		return;
 	}
 
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideSponsoredMessages)) {
+		result.sponsored.clear();
+	}
 	_peerSearchQuery = result.query.toLower().trimmed();
 	clearPeerSearchResults();
 	_peerSearchResults.reserve(result.peers.size()
@@ -4772,6 +4805,11 @@ Data::CommunityInfo *InnerWidget::shownCommunity() const {
 }
 
 bool InnerWidget::needCollapsedRowsRefresh() const {
+	if (_filterId > 0) {
+		const auto expected = Nagram::Get(
+			Core::App().settings(), Nagram::Option::ShowArchiveInFolders);
+		return _skipTopDialog || (_collapsedRows.empty() == expected);
+	}
 	const auto archive = !_shownList->empty()
 		? _shownList->begin()->get()->folder()
 		: nullptr;
@@ -6050,12 +6088,12 @@ void InnerWidget::repaintDialogRowCornerStatus(not_null<History*> history) {
 	const auto skip = user
 		? st::dialogsOnlineBadgeSkip
 		: st::dialogsCallBadgeSkip;
-	const auto updateRect = QRect(
-		_st->photoSize - skip.x() - size,
-		_st->photoSize - skip.y() - size,
-		size,
-		size
-	).marginsAdded(
+	const auto updateRect = Ui::CustomAvatarBadgeRect(
+		_st->photoSize, size, stroke, history->peer->userpicShape()).value_or(QRect(
+			_st->photoSize - skip.x() - size,
+			_st->photoSize - skip.y() - size,
+			size,
+			size)).marginsAdded(
 		{ stroke, stroke, stroke, stroke }
 	).translated(
 		st::defaultDialogRow.padding.left(),

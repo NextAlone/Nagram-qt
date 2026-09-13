@@ -1018,7 +1018,8 @@ void WebPage::draw(Painter &p, const PaintContext &context) const {
 		: useColorIndex
 		? st->coloredReplyCache(selected, colorIndex).get()
 		: stm->replyCache[colorPattern].get();
-	const auto backgroundEmojiId = factcheck
+	const auto simple = context.simpleQuotes.value_or(st->simpleQuotes());
+	const auto backgroundEmojiId = (factcheck || simple)
 		? DocumentId()
 		: (sponsored && sponsored->backgroundEmojiId)
 		? sponsored->backgroundEmojiId

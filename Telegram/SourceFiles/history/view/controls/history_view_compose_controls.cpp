@@ -101,6 +101,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "main/main_app_config.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_text.h"
 #include "main/main_session_settings.h"
 #include "main/session/send_as_peers.h"
 #include "media/audio/media_audio_capture.h"
@@ -1427,7 +1429,8 @@ ComposeControls::ComposeControls(
 				updateControlsGeometry(_wrap->size());
 			} else if (_botKeyboardHide && !has) {
 				_botKeyboardHide = nullptr;
-				_tabbedSelectorToggle->show();
+				_tabbedSelectorToggle->setVisible(!Nagram::Get(
+					Core::App().settings(), Nagram::Option::HideEmojiButton));
 				updateControlsGeometry(_wrap->size());
 			}
 		}, _wrap->lifetime());
@@ -1847,7 +1850,7 @@ rpl::producer<> ComposeControls::commentsShownToggles() const {
 void ComposeControls::setStarsReactionCounter(
 		rpl::producer<Ui::SendStarButtonState> count,
 		rpl::producer<SendStarButtonEffect> effects) {
-	if (!count) {
+	if (!count || Nagram::Get(Core::App().settings(), Nagram::Option::HideQuickStars)) {
 		delete base::take(_starsReaction);
 		updateControlsGeometry(_wrap->size());
 	} else {
@@ -2755,6 +2758,45 @@ void ComposeControls::init() {
 	}
 
 	initLikeButton();
+	rpl::combine(
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideAttachButton),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideSendAsButton),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideEmojiButton),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideAiComposeButton)
+	) | rpl::skip(1) | rpl::on_next([=] {
+		updateControlsVisibility();
+		updateControlsGeometry(_wrap->size());
+	}, _wrap->lifetime());
+	Nagram::Value(Core::App().settings(), Nagram::Option::HideBotMenu
+	) | rpl::skip(1) | rpl::on_next([=] {
+		if (refreshBotMenuButton()) {
+			updateControlsVisibility();
+			updateControlsGeometry(_wrap->size());
+		}
+	}, _wrap->lifetime());
+	Nagram::Value(Core::App().settings(), Nagram::Option::DisableAttachHover
+	) | rpl::skip(1) | rpl::on_next([=] {
+		updateAttachBotsMenu();
+	}, _wrap->lifetime());
+	Nagram::Value(Core::App().settings(), Nagram::Option::HideBotCommandButton
+	) | rpl::skip(1) | rpl::on_next([=] {
+		if (updateBotCommandShown()) {
+			updateControlsVisibility();
+			updateControlsGeometry(_wrap->size());
+		}
+	}, _wrap->lifetime());
+	Nagram::Value(Core::App().settings(), Nagram::Option::PreferSystemAi
+	) | rpl::on_next([=] {
+		updateAiButtonVisibility();
+	}, _wrap->lifetime());
+	Nagram::Value(Core::App().settings(), Nagram::Option::HideGiftButton
+	) | rpl::skip(1) | rpl::on_next([=] {
+		refreshSendGiftToggle();
+	}, _wrap->lifetime());
+	Nagram::Value(Core::App().settings(), Nagram::Option::HideAutoDeleteButton
+	) | rpl::skip(1) | rpl::on_next([=] {
+		updateMessagesTTLShown();
+	}, _wrap->lifetime());
 
 	_wrap->sizeValue(
 	) | rpl::on_next([=](QSize size) {
@@ -3252,7 +3294,9 @@ void ComposeControls::updateFieldPlaceholder() {
 		if (isEditingMessage()) {
 			return tr::lng_edit_message_text();
 		} else if (!peer) {
-			return tr::lng_message_ph();
+			return peer
+				? Nagram::InputPlaceholder(Core::App().settings(), peer)
+				: tr::lng_message_ph();
 		} else if (const auto stars = ephemeralReply
 			? 0
 			: peer->starsPerMessageChecked()) {
@@ -3304,10 +3348,14 @@ void ComposeControls::updateFieldPlaceholder() {
 			} else if (channel->adminRights() & ChatAdminRight::Anonymous) {
 				return tr::lng_send_anonymous_ph();
 			} else {
-				return tr::lng_message_ph();
+				return peer
+				? Nagram::InputPlaceholder(Core::App().settings(), peer)
+				: tr::lng_message_ph();
 			}
 		} else {
-			return tr::lng_message_ph();
+			return peer
+				? Nagram::InputPlaceholder(Core::App().settings(), peer)
+				: tr::lng_message_ph();
 		}
 	}();
 	_field->setPlaceholder(rpl::combine(
@@ -4316,6 +4364,13 @@ void ComposeControls::changeFocusedControl() {
 }
 
 void ComposeControls::initVoiceRecordBar() {
+	Nagram::Value(Core::App().settings(), Nagram::Option::HideRecordingButton
+	) | rpl::skip(1) | rpl::on_next([=] {
+		if (!_voiceRecordBar->isActive()) {
+			updateSendButtonType();
+		}
+	}, _wrap->lifetime());
+
 	_voiceRecordBar->recordingStateChanges(
 	) | rpl::on_next([=](bool active) {
 		if (active) {
@@ -4752,7 +4807,11 @@ auto ComposeControls::computeSendButtonType() const {
 		return Type::Save;
 	} else if (_isInlineBot) {
 		return Type::Cancel;
-	} else if (showRecordButton()) {
+	} else if (showRecordButton()
+		&& (_voiceRecordBar->isActive()
+			|| !Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::HideRecordingButton))) {
 		const auto both = Webrtc::RecordAvailability::VideoAndAudio;
 		const auto video = Core::App().settings().recordVideoMessages();
 		return (video && _recordAvailability == both)
@@ -4909,8 +4968,9 @@ void ComposeControls::updateControlsGeometry(QSize size) {
 		- (_botMenu.button
 			? (st::historyBotMenuSkip + _botMenu.button->width())
 			: 0)
-		- (_attachToggle ? _attachToggle->width() : 0)
-		- (_sendAs ? _sendAs->width() : 0)
+		- ((_attachToggle && (!_attachToggle->isHidden() || _replaceMedia))
+			? _attachToggle->width() : 0)
+		- ((_sendAs && !_sendAs->isHidden()) ? _sendAs->width() : 0)
 		- _st.padding.right()
 		- _send->width()
 		- (_editStars ? _editStars->width() : 0)
@@ -4967,11 +5027,12 @@ void ComposeControls::updateControlsGeometry(QSize size) {
 	}
 	if (_attachToggle) {
 		_attachToggle->moveToLeft(left, buttonsTop);
-		left += _attachToggle->width();
+		left += (!_attachToggle->isHidden() || _replaceMedia)
+			? _attachToggle->width() : 0;
 	}
 	if (_sendAs) {
 		_sendAs->moveToLeft(left, buttonsTop);
-		left += _sendAs->width();
+		left += _sendAs->isHidden() ? 0 : _sendAs->width();
 	}
 	const auto fieldHeight = composeFieldHeight();
 	const auto fieldTop = size.height() - _st.padding.bottom() - fieldHeight;
@@ -5067,6 +5128,8 @@ void ComposeControls::updateControlsGeometry(QSize size) {
 }
 
 void ComposeControls::updateControlsVisibility() {
+	_tabbedSelectorToggle->setVisible(!_botKeyboardHide && !Nagram::Get(
+		Core::App().settings(), Nagram::Option::HideEmojiButton));
 	const auto hide = hideExtraButtons()
 		|| isEditingMessage()
 		|| textExceedsMaxSize();
@@ -5087,7 +5150,8 @@ void ComposeControls::updateControlsVisibility() {
 		_ttlInfo->setVisible(!hide);
 	}
 	if (_sendAs) {
-		_sendAs->show();
+		_sendAs->setVisible(!Nagram::Get(
+			Core::App().settings(), Nagram::Option::HideSendAsButton));
 	}
 	if (_replaceMedia) {
 		_replaceMedia->show();
@@ -5096,7 +5160,8 @@ void ComposeControls::updateControlsVisibility() {
 		_botMenu.button->show();
 	}
 	if (_attachToggle) {
-		_attachToggle->setVisible(!_replaceMedia);
+		_attachToggle->setVisible(!_replaceMedia && !Nagram::Get(
+			Core::App().settings(), Nagram::Option::HideAttachButton));
 	}
 	if (_scheduled) {
 		_scheduled->setVisible(!hide);
@@ -5120,7 +5185,9 @@ void ComposeControls::updateControlsVisibility() {
 }
 
 void ComposeControls::updateAiButtonVisibility() {
-	const auto hidden = !hasEnoughLinesForAi()
+	const auto hidden = Nagram::Get(
+		Core::App().settings(), Nagram::Option::HideAiComposeButton)
+		|| !hasEnoughLinesForAi()
 		|| !_wrap->isVisible()
 		|| _recording.current()
 		|| !_field->isVisible();
@@ -5263,6 +5330,13 @@ bool ComposeControls::updateLikeShown() {
 
 void ComposeControls::showAiComposeBox() {
 	const auto text = prepareTextForEditMsg();
+	const auto original = _field->getTextWithTags();
+	const auto originalHistory = _history;
+	const auto originalTopic = _topicRootId;
+	const auto originalMono = _monoforumPeerId;
+	const auto originalShortcut = _shortcutId;
+	const auto originalEdit = _header->editMsgId();
+	const auto weak = QPointer<Ui::RpWidget>(_wrap.get());
 	if (text.text.isEmpty()) {
 		return;
 	}
@@ -5294,6 +5368,14 @@ void ComposeControls::showAiComposeBox() {
 				TextUtilities::ConvertEntitiesToTextTags(result.entities),
 			}, TextUpdateEvent::SaveDraft, action);
 		}),
+		.canApply = [=] {
+			return weak && _history == originalHistory
+				&& _topicRootId == originalTopic
+				&& _monoforumPeerId == originalMono
+				&& _shortcutId == originalShortcut
+				&& _header->editMsgId() == originalEdit
+				&& _field->getTextWithTags() == original;
+		},
 		.send = std::move(send),
 		.setupMenu = std::move(setupMenu),
 	});
@@ -5351,6 +5433,9 @@ bool ComposeControls::updateBotCommandShown() {
 	auto shown = false;
 	const auto peer = _history ? _history->peer.get() : nullptr;
 	if (_botCommandStart
+			&& !Nagram::Get(
+				Core::App().settings(),
+				Nagram::Option::HideBotCommandButton)
 			&& peer
 			&& _botCommandStartExtraGuard.current()
 			&& !isEditingMessage()) {
@@ -5399,6 +5484,7 @@ bool ComposeControls::refreshBotMenuButton() {
 	}
 	auto buttonChanged = false;
 	if (!bot
+		|| Nagram::Get(Core::App().settings(), Nagram::Option::HideBotMenu)
 		|| (_mode != Mode::Normal)
 		|| (bot->botInfo->botMenuButtonUrl.isEmpty()
 			&& bot->botInfo->commands.empty())) {
@@ -5483,6 +5569,9 @@ void ComposeControls::updateOuterGeometry(QRect rect) {
 void ComposeControls::updateMessagesTTLShown() {
 	const auto peer = _history ? _history->peer.get() : nullptr;
 	const auto shown = _features.ttlInfo
+		&& !Nagram::Get(
+			Core::App().settings(),
+			Nagram::Option::HideAutoDeleteButton)
 		&& peer
 		&& (peer->messagesTTL() > 0);
 	if (!shown && _ttlInfo) {
@@ -5509,6 +5598,7 @@ void ComposeControls::refreshSendGiftToggle() {
 		| Type::Limited
 		| Type::Unique;
 	const auto has = _regularWindow
+		&& !Nagram::Get(Core::App().settings(), Nagram::Option::HideGiftButton)
 		&& user
 		&& !_writeRestriction.current()
 		&& !user->isServiceUser()
@@ -5597,7 +5687,8 @@ void ComposeControls::updateAttachBotsMenu() {
 	}
 	_attachBotsMenu->setOrigin(
 		Ui::PanelAnimation::Origin::BottomLeft);
-	if (!ChatHelpers::ShowPanelOnClick()) {
+	if (!ChatHelpers::ShowPanelOnClick()
+		&& !Nagram::Get(Core::App().settings(), Nagram::Option::DisableAttachHover)) {
 		_attachToggle->installEventFilter(_attachBotsMenu.get());
 	}
 	_attachBotsMenu->heightValue(
@@ -6435,6 +6526,12 @@ void ComposeControls::insertTextToField(const QString &text) {
 	_field->setFocus();
 	_field->textCursor().insertText(text);
 	_field->ensureCursorVisible();
+}
+
+void ComposeControls::insertBotCommandToField(const QString &command) {
+	if (_canSendTexts.current() && _field->isEnabled() && !_field->isHidden()) {
+		insertTextToField(command + ' ');
+	}
 }
 
 QString ComposeControls::fieldLastText() const {

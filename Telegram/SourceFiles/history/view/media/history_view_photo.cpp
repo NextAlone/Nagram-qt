@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_photo.h"
 
+#include "nagram/nagram_media.h"
+
 #include "boxes/send_credits_box.h"
 #include "history/history_item_components.h"
 #include "history/history_item.h"
@@ -1189,7 +1191,7 @@ bool Photo::videoAutoplayEnabled() const {
 
 void Photo::hideSpoilers() {
 	if (_spoiler) {
-		_spoiler->revealed = false;
+		_spoiler->revealed = parent()->mediaSpoilersRevealed();
 	}
 }
 

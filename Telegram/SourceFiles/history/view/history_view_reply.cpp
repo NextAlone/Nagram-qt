@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_reply.h"
 
+#include "core/application.h"
 #include "core/click_handler_types.h"
 #include "core/ui_integration.h"
 #include "data/stickers/data_custom_emoji.h"
@@ -26,6 +27,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item_helpers.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "ui/chat/chat_style.h"
 #include "ui/effects/ripple_animation.h"
 #include "ui/effects/spoiler_mess.h"
@@ -409,7 +411,8 @@ void Reply::update(
 		|| (externalMedia && externalMedia->hasReplyPreview())
 		|| (pollMediaPtr
 			&& (pollMediaPtr->photo || pollMediaPtr->document));
-	_hasPreview = hasPreview ? 1 : 0;
+	_hasPreview = (hasPreview && !Nagram::Get(
+		Core::App().settings(), Nagram::Option::HideReplyThumbnails)) ? 1 : 0;
 	_displaying = data->displaying() ? 1 : 0;
 	_multiline = data->multiline() ? 1 : 0;
 	const auto hasQuoteIcon = _displaying
@@ -817,7 +820,9 @@ void Reply::paint(
 	y += st::historyReplyTop;
 	const auto rect = QRect(x, y, w, _height);
 	const auto selected = context.selected();
-	const auto backgroundEmojiId = _colorPeer
+	const auto simple = context.simpleQuotes.value_or(Nagram::Get(
+		Core::App().settings(), Nagram::Option::SimpleQuotesAndReplies));
+	const auto backgroundEmojiId = (!simple && _colorPeer)
 		? _colorPeer->backgroundEmojiId()
 		: DocumentId();
 	const auto colorIndexPlusOne = _colorPeer

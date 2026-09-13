@@ -29,6 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "iv/iv_rich_message_serializer.h"
 #include "iv/iv_rich_page.h"
 #include "lang/lang_keys.h"
+#include "nagram/nagram_text.h"
 #include "main/main_session.h"
 #include "mtproto/mtproto_response.h"
 #include "boxes/abstract_box.h" // Ui::show().
@@ -295,12 +296,16 @@ mtpRequestId SuggestMessageOrMedia(
 template <typename DoneCallback, typename FailCallback>
 mtpRequestId EditMessage(
 		not_null<HistoryItem*> item,
-		const TextWithEntities &textWithEntities,
+		const TextWithEntities &inputText,
 		Data::WebPageDraft webpage,
 		SendOptions options,
 		DoneCallback &&done,
 		FailCallback &&fail,
 		std::optional<MTPInputMedia> inputMedia = std::nullopt) {
+	const auto textWithEntities = Nagram::PrepareText(
+		Core::App().settings(),
+		inputText,
+		true);
 	if (item->computeSuggestionActions()
 		== SuggestionActions::AcceptAndDecline) {
 		return SuggestMessageOrMedia(
@@ -541,7 +546,7 @@ mtpRequestId EditTextMessage(
 		welcome.edit(
 			history,
 			welcome.lookupId(item),
-			caption,
+			Nagram::PrepareText(Core::App().settings(), caption, true),
 			[=] {
 				if (done) {
 					done(0);

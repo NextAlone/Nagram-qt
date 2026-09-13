@@ -33,6 +33,7 @@ struct ComposeAiBoxArgs {
 	TextWithEntities text;
 	std::shared_ptr<Ui::ChatStyle> chatStyle;
 	Fn<void(TextWithEntities)> apply;
+	Fn<bool()> canApply;
 	Fn<void(TextWithEntities, Api::SendOptions, Fn<void()>)> send;
 	Fn<void(not_null<Ui::RpWidget*>, Fn<void(Api::SendOptions)>)> setupMenu;
 	std::shared_ptr<const Iv::RichPage> richSource;

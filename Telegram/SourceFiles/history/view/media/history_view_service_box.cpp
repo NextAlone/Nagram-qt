@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_service_box.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "core/ui_integration.h"
 #include "data/data_session.h"
 #include "history/view/media/history_view_sticker_player_abstract.h"
@@ -420,7 +423,7 @@ bool ServiceBox::customInfoLayout() const {
 }
 
 void ServiceBox::hideSpoilers() {
-	_subtitle.setSpoilerRevealed(false, anim::type::instant);
+	_subtitle.setSpoilerRevealed(parent()->spoilersRevealed(), anim::type::instant);
 }
 
 bool ServiceBox::hasHeavyPart() const {

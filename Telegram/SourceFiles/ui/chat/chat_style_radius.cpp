@@ -17,6 +17,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Ui {
 namespace {
 
+auto BubbleRoundness = 0;
+
+int AdjustRoundness(int radius) {
+	return BubbleRoundness
+		? std::max(1, radius * BubbleRoundness / 100)
+		: radius;
+}
+
 base::options::toggle UseSmallMsgBubbleRadius({
 	.id = kOptionUseSmallMsgBubbleRadius,
 	.name = "Use small message bubble radius",
@@ -28,34 +36,29 @@ base::options::toggle UseSmallMsgBubbleRadius({
 
 const char kOptionUseSmallMsgBubbleRadius[] = "use-small-msg-bubble-radius";
 
+void SetBubbleRoundness(int percent) {
+	Expects(!percent || (percent >= 10 && percent <= 100));
+	BubbleRoundness = percent;
+}
+
 int BubbleRadiusSmall() {
-	return st::bubbleRadiusSmall;
+	return AdjustRoundness(st::bubbleRadiusSmall);
 }
 
 int BubbleRadiusLarge() {
-	static const auto result = [] {
-		if (UseSmallMsgBubbleRadius.value()) {
-			return st::bubbleRadiusSmall;
-		} else {
-			return st::bubbleRadiusLarge;
-		}
-	}();
-	return result;
+	return !BubbleRoundness && UseSmallMsgBubbleRadius.value()
+		? int(st::bubbleRadiusSmall)
+		: AdjustRoundness(st::bubbleRadiusLarge);
 }
 
 int MsgFileThumbRadiusSmall() {
-	return st::msgFileThumbRadiusSmall;
+	return AdjustRoundness(st::msgFileThumbRadiusSmall);
 }
 
 int MsgFileThumbRadiusLarge() {
-	static const auto result = [] {
-		if (UseSmallMsgBubbleRadius.value()) {
-			return st::msgFileThumbRadiusSmall;
-		} else {
-			return st::msgFileThumbRadiusLarge;
-		}
-	}();
-	return result;
+	return !BubbleRoundness && UseSmallMsgBubbleRadius.value()
+		? int(st::msgFileThumbRadiusSmall)
+		: AdjustRoundness(st::msgFileThumbRadiusLarge);
 }
 
 }

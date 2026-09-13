@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/components/sponsored_messages.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "api/api_text_entities.h"
 #include "api/api_peer_search.h" // SponsoredSearchResult
 #include "apiwrap.h"
@@ -103,7 +106,7 @@ void SponsoredMessages::clearOldRequests() {
 
 SponsoredMessages::AppendResult SponsoredMessages::append(
 		not_null<History*> history) {
-	if (isTopBarFor(history)) {
+	if (!canHaveFor(history) || isTopBarFor(history)) {
 		return SponsoredMessages::AppendResult::None;
 	}
 	const auto it = _data.find(history);
@@ -302,6 +305,9 @@ HistoryItem *SponsoredMessages::injectItem(
 }
 
 bool SponsoredMessages::canHaveFor(not_null<History*> history) const {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideSponsoredMessages)) {
+		return false;
+	}
 	if (history->peer->isChannel()) {
 		return true;
 	} else if (const auto user = history->peer->asUser()) {
@@ -311,7 +317,8 @@ bool SponsoredMessages::canHaveFor(not_null<History*> history) const {
 }
 
 bool SponsoredMessages::canHaveFor(not_null<HistoryItem*> item) const {
-	return item->history()->peer->isBroadcast()
+	return !Nagram::Get(Core::App().settings(), Nagram::Option::HideSponsoredMessages)
+		&& item->history()->peer->isBroadcast()
 		&& item->isRegular();
 }
 
@@ -499,6 +506,9 @@ void SponsoredMessages::parseForVideo(
 
 SponsoredForVideo SponsoredMessages::prepareForVideo(
 		not_null<PeerData*> peer) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideSponsoredMessages)) {
+		return {};
+	}
 	const auto i = _dataForVideo.find(peer);
 	if (i == end(_dataForVideo) || i->second.entries.empty()) {
 		return {};
@@ -516,6 +526,9 @@ SponsoredForVideo SponsoredMessages::prepareForVideo(
 FullMsgId SponsoredMessages::fillTopBar(
 		not_null<History*> history,
 		not_null<Ui::RpWidget*> widget) {
+	if (!canHaveFor(history)) {
+		return {};
+	}
 	const auto it = _data.find(history);
 	if (it != end(_data)) {
 		const auto &list = it->second;
@@ -893,7 +906,7 @@ SponsoredMessages::State SponsoredMessages::state(
 }
 
 bool SponsoredMessages::hasUnshownFor(not_null<History*> history) const {
-	if (isTopBarFor(history)) {
+	if (!canHaveFor(history) || isTopBarFor(history)) {
 		return false;
 	}
 	const auto it = _data.find(history);

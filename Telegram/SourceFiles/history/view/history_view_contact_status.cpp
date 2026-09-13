@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_contact_status.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "lang/lang_keys.h"
 #include "ui/controls/userpic_button.h"
 #include "ui/widgets/menu/menu_add_action_callback_factory.h"
@@ -793,7 +796,8 @@ auto ContactStatus::PeerState(not_null<PeerData*> peer)
 			if (flags.value & Flag::Blocked) {
 				return { Type::None };
 			} else if (user->isContact()) {
-				if (settings.value & PeerBarSetting::ShareContact) {
+				if ((settings.value & PeerBarSetting::ShareContact)
+					&& !Nagram::Get(Core::App().settings(), Nagram::Option::HidePhoneSharePrompt)) {
 					return { Type::SharePhoneNumber };
 				} else {
 					return { Type::None };

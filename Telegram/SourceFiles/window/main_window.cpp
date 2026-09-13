@@ -5,6 +5,7 @@ the official desktop application for the Telegram messaging service.
 For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
+#include "nagram/nagram_settings.h"
 #include "window/main_window.h"
 
 #include "api/api_updates.h"
@@ -887,7 +888,7 @@ void MainWindow::updateTitle() {
 	}
 
 	const auto suffix = nativeTitleSuffix();
-	const auto settings = Core::App().settings().windowTitleContent();
+	const auto settings = Nagram::WindowTitleOptions(Core::App().settings());
 	const auto locked = Core::App().passcodeLocked();
 	const auto counter = settings.hideTotalUnread
 		? 0

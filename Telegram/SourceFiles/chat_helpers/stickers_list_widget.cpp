@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "chat_helpers/stickers_list_widget.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "base/options.h"
 #include "base/timer_rpl.h"
 #include "core/application.h"
@@ -290,7 +292,18 @@ StickersListWidget::StickersListWidget(
 		refreshStickers();
 	}, lifetime());
 
+	rpl::combine(
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideFeaturedStickers),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideGroupStickers)
+	) | rpl::skip(1) | rpl::on_next([=] {
+		refreshStickers();
+	}, lifetime());
+
 	if (!_isEffects) {
+		Nagram::RecentStickerLimitValue(Core::App().settings()
+		) | rpl::skip(1) | rpl::on_next([=] {
+			refreshRecent();
+		}, lifetime());
 		session().data().stickers().recentUpdated(_isMasks
 			? Data::StickersType::Masks
 			: Data::StickersType::Stickers
@@ -399,6 +412,9 @@ void StickersListWidget::visibleTopBottomUpdated(
 void StickersListWidget::checkVisibleFeatured(
 		int visibleTop,
 		int visibleBottom) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideFeaturedStickers)) {
+		return;
+	}
 	readVisibleFeatured(visibleTop, visibleBottom);
 
 	const auto visibleHeight = visibleBottom - visibleTop;
@@ -3151,6 +3167,11 @@ void StickersListWidget::refreshMySets() {
 }
 
 void StickersListWidget::refreshFeaturedSets() {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideFeaturedStickers)) {
+		_featuredSetsCount = 0;
+		_officialSets.clear();
+		return;
+	}
 	auto wasFeaturedSetsCount = base::take(_featuredSetsCount);
 	auto wereOfficial = base::take(_officialSets);
 	_officialSets.reserve(
@@ -3368,8 +3389,10 @@ auto StickersListWidget::collectRecentStickers() -> std::vector<Sticker> {
 	_custom.reserve(cloudCount + recent.size() + customCount);
 
 	auto add = [&](not_null<DocumentData*> document, bool custom) {
-		if (result.size() >= kRecentDisplayLimit
-			&& !OptionUnlimitedRecentStickers.value()) {
+		const auto limit = Nagram::RecentStickerLimit(Core::App().settings());
+		if ((limit && result.size() >= limit)
+			|| (!limit && result.size() >= kRecentDisplayLimit
+				&& !OptionUnlimitedRecentStickers.value())) {
 			return;
 		}
 		const auto i = ranges::find(result, document, &Sticker::document);
@@ -3483,7 +3506,8 @@ void StickersListWidget::refreshFavedStickers() {
 }
 
 void StickersListWidget::refreshMegagroupStickers(GroupStickersPlace place) {
-	if (!_features.megagroupSet || !_megagroupSet || _isMasks) {
+	if (!_features.megagroupSet || !_megagroupSet || _isMasks
+		|| Nagram::Get(Core::App().settings(), Nagram::Option::HideGroupStickers)) {
 		return;
 	}
 	auto canEdit = _megagroupSet->canEditStickers();

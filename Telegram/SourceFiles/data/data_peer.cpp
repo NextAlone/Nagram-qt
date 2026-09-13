@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_peer.h"
+#include "nagram/nagram_profile.h"
 
 #include "api/api_sensitive_content.h"
 #include "data/data_user.h"
@@ -514,6 +515,9 @@ QImage PeerData::GenerateUserpicImage(
 		Ui::PeerUserpicView &view,
 		int size,
 		std::optional<int> radius) {
+	if (!radius) {
+		radius = Ui::CustomAvatarRadius(size, peer->userpicShape());
+	}
 	if (const auto userpic = peer->userpicCloudImage(view)) {
 		auto image = userpic->scaled(
 			{ size, size },
@@ -1089,6 +1093,7 @@ void PeerData::fillNames() {
 	};
 
 	appendToIndex(name());
+	appendToIndex(Nagram::PeerAlias(this));
 	const auto appendTranslit = !toIndexList.isEmpty()
 		&& cRussianLetters().match(toIndexList.front()).hasMatch();
 	if (appendTranslit) {
@@ -1318,12 +1323,24 @@ ChannelData *PeerData::broadcastMonoforum() const {
 const QString &PeerData::topBarNameText() const {
 	if (const auto to = migrateTo()) {
 		return to->topBarNameText();
+	}
+	const auto &alias = Nagram::PeerAlias(this);
+	if (!alias.isEmpty()) {
+		return alias;
 	} else if (const auto user = asUser()) {
 		if (!user->nameOrPhone.isEmpty()) {
 			return user->nameOrPhone;
 		}
 	}
 	return _name;
+}
+
+void PeerData::localNameChanged() {
+	auto previous = nameFirstLetters();
+	++_nameVersion;
+	fillNames();
+	session().changes().nameUpdated(this, std::move(previous));
+	session().changes().peerUpdated(this, UpdateFlag::Name);
 }
 
 int PeerData::nameVersion() const {

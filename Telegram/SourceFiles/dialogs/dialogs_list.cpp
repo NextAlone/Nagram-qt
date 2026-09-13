@@ -103,7 +103,7 @@ void List::adjustByDate(not_null<Row*> row) {
 			i + 2,
 			_rows.end(),
 			key,
-			[&](not_null<Row*> row, uint64 key) {
+			[&](not_null<Row*> row, const auto &key) {
 				return (row->sortKey(_filterId) > key);
 			});
 		rotate(i, i + 1, before);
@@ -112,7 +112,7 @@ void List::adjustByDate(not_null<Row*> row) {
 			_rows.begin(),
 			i - 1,
 			key,
-			[&](not_null<Row*> row, uint64 key) {
+			[&](not_null<Row*> row, const auto &key) {
 				return (row->sortKey(_filterId) >= key);
 			});
 		rotate(after, i, i + 1);

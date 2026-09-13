@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/controls/history_view_webpage_processor.h"
 
 #include "base/unixtime.h"
+#include "core/application.h"
 #include "data/data_chat_participant_status.h"
 #include "data/data_file_origin.h"
 #include "data/data_session.h"
@@ -15,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 
 namespace HistoryView::Controls {
 
@@ -222,6 +224,8 @@ WebpageProcessor::WebpageProcessor(
 
 	_resolver->resolved() | rpl::on_next([=](QString link) {
 		if (_link != link
+			|| (!_draft.manual && Nagram::Get(
+				Core::App().settings(), Nagram::Option::DisableLinkPreview))
 			|| _draft.removed
 			|| (_draft.manual && _draft.url != link)) {
 			return;
@@ -236,6 +240,12 @@ WebpageProcessor::WebpageProcessor(
 			checkPreview();
 		}
 	}, _lifetime);
+	Nagram::Value(Core::App().settings(), Nagram::Option::DisableLinkPreview
+	) | rpl::skip(1) | rpl::on_next([=] {
+		if (!_draft.manual) {
+			checkNow(false);
+		}
+	}, _lifetime);
 }
 
 rpl::producer<> WebpageProcessor::repaintRequests() const {
@@ -243,6 +253,10 @@ rpl::producer<> WebpageProcessor::repaintRequests() const {
 }
 
 Data::WebPageDraft WebpageProcessor::draft() const {
+	if (!_draft.manual && Nagram::Get(
+			Core::App().settings(), Nagram::Option::DisableLinkPreview)) {
+		return { .removed = true };
+	}
 	return _draft;
 }
 
@@ -351,6 +365,15 @@ void WebpageProcessor::checkNow(bool force) {
 }
 
 void WebpageProcessor::checkPreview() {
+	if (!_draft.manual && Nagram::Get(
+			Core::App().settings(), Nagram::Option::DisableLinkPreview)) {
+		_resolver->cancel(_link);
+		_link = QString();
+		_links = QStringList();
+		_data = nullptr;
+		updateFromData();
+		return;
+	}
 	const auto previewRestricted = _history->peer
 		&& _history->peer->amRestricted(ChatRestriction::EmbedLinks);
 	if (_parsedLinks.empty()) {

@@ -22,6 +22,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/controls/history_view_voice_record_button.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "mainwidget.h" // MainWidget::stopAndClosePlayer
 #include "mainwindow.h"
 #include "media/audio/media_audio.h"
@@ -2810,7 +2811,11 @@ void VoiceRecordBar::recordUpdated(quint16 level, int samples) {
 void VoiceRecordBar::stop(bool send) {
 	if (isHidden() && !send) {
 		return;
-	} else if (send && _pauseInsteadSend) {
+	} else if (send && (_pauseInsteadSend || Nagram::Get(
+			Core::App().settings(),
+			_recordingVideo
+				? Nagram::Option::PreviewVideoMessages
+				: Nagram::Option::PreviewVoiceMessages))) {
 		_fullRecord = true;
 		stopRecording(StopType::Listen);
 		_lockShowing = false;

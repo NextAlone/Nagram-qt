@@ -22,6 +22,11 @@ struct HistoryMessageReply;
 struct PreparedServiceText;
 struct HistoryMessageReplyMarkup;
 
+namespace Nagram {
+struct ReadingProjection;
+struct FilterState;
+} // namespace Nagram
+
 namespace Data {
 class Thread;
 struct Reaction;
@@ -102,6 +107,9 @@ class Element;
 class ElementDelegate {
 public:
 	virtual Context elementContext() = 0;
+	virtual bool elementHideReactions() { return false; }
+	virtual bool elementHideSenderNames() { return false; }
+	virtual std::optional<bool> elementSpoilersRevealed() { return std::nullopt; }
 	virtual bool elementUnderCursor(not_null<const Element*> view) = 0;
 	virtual SelectionModeResult elementInSelectionMode(
 		const Element *view) = 0;
@@ -458,6 +466,9 @@ public:
 	[[nodiscard]] not_null<HistoryItem*> data() const;
 	[[nodiscard]] not_null<History*> history() const;
 	[[nodiscard]] Media *media() const;
+	[[nodiscard]] bool nagramFilteredContent() const {
+		return bool(_nagramFilteredContent);
+	}
 	[[nodiscard]] Context context() const;
 	void refreshDataId();
 
@@ -600,10 +611,12 @@ public:
 	[[nodiscard]] static SelectedQuote FindSelectedQuote(
 		const Ui::Text::String &text,
 		TextSelection selection,
-		not_null<HistoryItem*> item);
+		not_null<HistoryItem*> item,
+		Fn<TextSelection(TextSelection)> toOriginal = {});
 	[[nodiscard]] static TextSelection FindSelectionFromQuote(
 		const Ui::Text::String &text,
-		const SelectedQuote &quote);
+		const SelectedQuote &quote,
+		Fn<TextSelection(TextSelection)> toDisplay = {});
 
 	[[nodiscard]] virtual auto reactionButtonParameters(
 		QPoint position,
@@ -713,6 +726,8 @@ public:
 		const Reactions::InlineList &reactions) const;
 	void clearCustomEmojiRepaint() const;
 	void hideSpoilers();
+	[[nodiscard]] bool spoilersRevealed() const;
+	[[nodiscard]] bool mediaSpoilersRevealed() const;
 	void repaint(QRect r = QRect()) const;
 
 	[[nodiscard]] ClickHandlerPtr fromPhotoLink() const {
@@ -779,6 +794,8 @@ protected:
 	virtual void refreshDataIdHook();
 
 	[[nodiscard]] const Ui::Text::String &text() const;
+	[[nodiscard]] TextSelection readingToOriginal(TextSelection selection) const;
+	[[nodiscard]] TextSelection readingToDisplay(TextSelection selection) const;
 	[[nodiscard]] HistoryMessageRichPage *richpage();
 	[[nodiscard]] const HistoryMessageRichPage *richpage() const;
 	[[nodiscard]] int richPageWidthFor(int textWidth) const;
@@ -828,7 +845,8 @@ private:
 	void refreshMedia(Element *replacing);
 	void setTextWithLinks(
 		const TextWithEntities &text,
-		const std::vector<ClickHandlerPtr> &links = {});
+		const std::vector<ClickHandlerPtr> &links = {},
+		bool transform = false);
 	void setReactions(std::unique_ptr<Reactions::InlineList> list);
 
 	struct TextWithLinks {
@@ -846,6 +864,8 @@ private:
 
 	HistoryItem *_textItem = nullptr;
 	mutable Ui::Text::String _text;
+	std::unique_ptr<Nagram::ReadingProjection> _readingProjection;
+	std::shared_ptr<Nagram::FilterState> _nagramFilteredContent;
 	mutable uint32 _textWidth : 16 = 0;
 	mutable uint32 _textRealWidth : 16 = 0;
 	mutable int _textHeight = 0;

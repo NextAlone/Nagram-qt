@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "apiwrap.h"
 #include "base/random.h"
 #include "base/unixtime.h"
+#include "core/application.h"
 #include "data/components/welcome_messages.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
@@ -28,6 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "iv/iv_rich_page.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "nagram/nagram_text.h"
 #include "ui/toast/toast.h"
 
 namespace Data {
@@ -661,6 +663,7 @@ bool EphemeralMessages::trySend(const Api::MessageToSend &message) {
 		TextUtilities::ConvertTextTagsToEntities(message.textWithTags.tags),
 	};
 	TextUtilities::Trim(text);
+	text = Nagram::PrepareText(Core::App().settings(), text, false);
 	if (text.text.isEmpty()) {
 		return false;
 	}

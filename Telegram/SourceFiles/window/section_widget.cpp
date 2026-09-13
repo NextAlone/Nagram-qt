@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/section_widget.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "mainwidget.h"
 #include "mainwindow.h"
 #include "ui/ui_utility.h"
@@ -551,9 +554,14 @@ auto ChatThemeValueFromPeer(
 	not_null<SessionController*> controller,
 	not_null<PeerData*> peer)
 -> rpl::producer<std::shared_ptr<Ui::ChatTheme>> {
-	auto cloud = MaybeCloudThemeValueFromPeer(
-		peer
-	) | rpl::map([=](ResolvedTheme resolved)
+	auto cloud = Nagram::Value(
+		Core::App().settings(),
+		Nagram::Option::IgnorePeerThemes
+	) | rpl::map([=](bool ignore) -> rpl::producer<ResolvedTheme> {
+		return ignore
+			? rpl::producer<ResolvedTheme>(rpl::single(ResolvedTheme()))
+			: MaybeCloudThemeValueFromPeer(peer);
+	}) | rpl::flatten_latest() | rpl::map([=](ResolvedTheme resolved)
 	-> rpl::producer<std::shared_ptr<Ui::ChatTheme>> {
 		if (!resolved.theme && !resolved.paper) {
 			return rpl::single(controller->defaultChatTheme());

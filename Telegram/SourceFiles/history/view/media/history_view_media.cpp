@@ -6,6 +6,8 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_media.h"
+
+#include "nagram/nagram_media.h"
 #include "ui/basic_click_handlers.h"
 
 #include "boxes/send_credits_box.h" // CreditsEmoji.
@@ -514,6 +516,7 @@ ClickHandlerPtr Media::spoilerTagLink(
 }
 
 void Media::createSpoilerLink(not_null<MediaSpoiler*> spoiler) {
+	spoiler->revealed = Nagram::ShouldRevealMediaSpoiler(parent()->data());
 	const auto weak = base::make_weak(this);
 	spoiler->link = std::make_shared<LambdaClickHandler>([weak, spoiler](
 			const ClickContext &context) {

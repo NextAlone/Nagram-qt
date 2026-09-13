@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/dialogs_top_bar_suggestion.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "api/api_authorizations.h"
 #include "apiwrap.h"
 #include "base/call_delayed.h"
@@ -125,6 +127,20 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 			auto winner = (const TopBarSuggestions::Spec*)(nullptr);
 			for (auto i = 0; i < int(specs->size()); ++i) {
 				const auto &spec = (*specs)[i];
+				using Priority = TopBarSuggestions::Priority;
+				const auto birthday = spec.priority == Priority::BirthdaySetup
+					|| spec.priority == Priority::BirthdayContacts;
+				const auto commercial = spec.priority == Priority::PremiumOffer
+					|| spec.priority == Priority::PremiumGrace
+					|| spec.priority == Priority::LowCreditsSubs
+					|| spec.priority == Priority::CustomPromo
+					|| spec.priority == Priority::GiftAuctions;
+				if ((birthday && Nagram::Get(Core::App().settings(),
+						Nagram::Option::HideBirthdaySuggestions))
+					|| (commercial && Nagram::Get(Core::App().settings(),
+						Nagram::Option::HidePremiumPromotions))) {
+					continue;
+				}
 				if (spec.available(context)) {
 					winner = &spec;
 					break;
@@ -234,6 +250,10 @@ rpl::producer<Ui::SlideWrap<Ui::RpWidget>*> TopBarSuggestionValue(
 		}, lifetime);
 
 		rpl::merge(
+			Nagram::Value(Core::App().settings(), Nagram::Option::HidePremiumPromotions)
+				| rpl::skip(1) | rpl::to_empty,
+			Nagram::Value(Core::App().settings(), Nagram::Option::HideBirthdaySuggestions)
+				| rpl::skip(1) | rpl::to_empty,
 			session->promoSuggestions().value(),
 			session->api().authorizations().unreviewedChanges(),
 			Data::AmPremiumValue(session) | rpl::skip(1) | rpl::to_empty,

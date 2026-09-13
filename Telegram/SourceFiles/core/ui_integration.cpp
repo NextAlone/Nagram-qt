@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/ui_integration.h"
+#include "nagram/nagram_links.h"
 
 #include "api/api_text_entities.h"
 #include "core/local_url_handlers.h"
@@ -429,6 +430,8 @@ bool UiIntegration::handleUrlClick(
 		return true;
 	} else if (local.startsWith(u"internal:"_q, Qt::CaseInsensitive)) {
 		Core::App().openInternalUrl(local, context);
+		return true;
+	} else if (Nagram::HandleExternalLink(url, context.value<ClickHandlerContext>())) {
 		return true;
 	} else if (Iv::PreferForUri(url)
 		&& !context.value<ClickHandlerContext>().ignoreIv) {

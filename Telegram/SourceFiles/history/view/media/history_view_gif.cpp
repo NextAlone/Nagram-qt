@@ -9,9 +9,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "apiwrap.h"
 #include "api/api_transcribes.h"
+#include "nagram/nagram_service_boxes.h"
 #include "lang/lang_keys.h"
 #include "mainwindow.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_media.h"
 #include "main/main_session_settings.h"
 #include "media/audio/media_audio.h"
 #include "media/clip/media_clip_reader.h"
@@ -579,6 +582,12 @@ bool Gif::underCursor(bool fullFeatured) const {
 }
 
 bool Gif::autoplayEnabled() const {
+	if ((_data->isVideoFile() || _data->isVideoMessage())
+		&& Nagram::Get(
+			Core::App().settings(),
+			Nagram::Option::DisableVideoAutoplay)) {
+		return false;
+	}
 	if (_realParent->isSponsored()) {
 		return true;
 	}
@@ -2082,7 +2091,7 @@ bool Gif::uploading() const {
 
 void Gif::hideSpoilers() {
 	if (_spoiler) {
-		_spoiler->revealed = false;
+		_spoiler->revealed = parent()->mediaSpoilersRevealed();
 	}
 }
 
@@ -2475,6 +2484,9 @@ Gif::Streamed *Gif::activeOwnStreamed() const {
 }
 
 void Gif::playAnimation(bool autoplay) {
+	if (autoplay && !autoplayEnabled()) {
+		return;
+	}
 	ensureDataMediaCreated();
 	if (_data->isVideoMessage() && !autoplay) {
 		return;
@@ -2712,6 +2724,7 @@ void Gif::ensureTranscribeButton() const {
 		&& !_parent->data()->isScheduled()
 		&& !_parent->data()->isAdminLogEntry()
 		&& (_data->session().premium()
+			|| Nagram::CustomTranscriptionSelected()
 			|| _data->session().api().transcribes().trialsSupport())) {
 		if (!_transcribe) {
 			_transcribe = std::make_unique<TranscribeButton>(

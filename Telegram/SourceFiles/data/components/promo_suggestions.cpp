@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/components/promo_suggestions.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "api/api_text_entities.h"
 #include "apiwrap.h"
 #include "base/unixtime.h"
@@ -194,6 +196,10 @@ void PromoSuggestions::setTopPromoted(
 		History *promoted,
 		const QString &type,
 		const QString &message) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::HideProxySponsor)
+		&& type == u"proxy"_q) {
+		promoted = nullptr;
+	}
 	const auto changed = (_topPromoted != promoted);
 	if (!changed
 		&& (!promoted || promoted->topPromotionMessage() == message)) {

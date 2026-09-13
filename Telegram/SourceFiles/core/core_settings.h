@@ -1049,6 +1049,8 @@ public:
 		writePrefImpl<Type>(key, std::forward<Other>(value));
 	}
 	void clearPref(std::string_view key);
+	void applyPrefChanges(
+		const base::flat_map<QByteArray, std::optional<QByteArray>> &changes);
 
 	template <typename Type, typename Other = Type>
 	[[nodiscard]] Type readPref(
@@ -1231,4 +1233,3 @@ private:
 };
 
 } // namespace Core
-

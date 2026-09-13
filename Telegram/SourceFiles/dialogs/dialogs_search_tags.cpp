@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/dialogs_search_tags.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "base/qt/qt_key_modifiers.h"
 #include "boxes/premium_preview_box.h"
 #include "core/click_handler_types.h"
@@ -91,10 +94,12 @@ SearchTags::SearchTags(
 , _added(selected) {
 	rpl::combine(
 		std::move(tags),
-		Data::AmPremiumValue(&owner->session())
+		Data::AmPremiumValue(&owner->session()),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideSavedTags)
 	) | rpl::on_next([=](
 			const std::vector<Data::Reaction> &list,
-			bool premium) {
+			bool premium,
+			bool) {
 		fill(list, premium);
 	}, _lifetime);
 
@@ -118,6 +123,7 @@ void SearchTags::fill(
 		const std::vector<Data::Reaction> &list,
 		bool premium) {
 	const auto selected = collectSelected();
+	const auto hide = Nagram::Get(Core::App().settings(), Nagram::Option::HideSavedTags);
 	_tags.clear();
 	_tags.reserve(list.size());
 	const auto link = [&](Data::ReactionId id) {
@@ -143,6 +149,9 @@ void SearchTags::fill(
 		}));
 	};
 	const auto push = [&](Data::ReactionId id, const QString &text) {
+		if (hide && !ranges::contains(selected, id) && !ranges::contains(_added, id)) {
+			return;
+		}
 		const auto customId = id.custom();
 		_tags.push_back({
 			.id = id,
@@ -160,7 +169,7 @@ void SearchTags::fill(
 			_owner->reactions().preloadReactionImageFor(id);
 		}
 	};
-	if (!premium) {
+	if (!premium && !hide) {
 		const auto text = (list.empty() && _added.empty())
 			? tr::lng_add_tag_button(tr::now)
 			: tr::lng_unlock_tags(tr::now);

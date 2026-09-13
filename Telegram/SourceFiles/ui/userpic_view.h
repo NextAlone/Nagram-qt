@@ -14,9 +14,34 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class QPainter;
 
+namespace Media::Streaming { struct FrameRequest; }
+
 namespace Ui {
 
+enum class PeerUserpicShape : uint8 {
+	Auto,
+	Circle,
+	Forum,
+	Monoforum,
+};
+
 class EmptyUserpic;
+
+void SetAvatarRoundness(int percent, bool uniform = false);
+[[nodiscard]] std::optional<int> CustomAvatarRadius(
+	int size,
+	PeerUserpicShape shape = PeerUserpicShape::Circle);
+void PrepareAvatarFrame(
+	Media::Streaming::FrameRequest &request,
+	QSize size,
+	PeerUserpicShape shape,
+	std::array<QImage, 4> &corners,
+	QImage &ellipse);
+[[nodiscard]] std::optional<QRect> CustomAvatarBadgeRect(
+	int photoSize,
+	int badgeSize,
+	int stroke = 0,
+	PeerUserpicShape shape = PeerUserpicShape::Circle);
 
 [[nodiscard]] float64 ForumUserpicRadiusMultiplier();
 
@@ -35,13 +60,6 @@ void PaintCommunityUserpicEffect(
 	int y,
 	int size,
 	QColor color);
-
-enum class PeerUserpicShape : uint8 {
-	Auto,
-	Circle,
-	Forum,
-	Monoforum,
-};
 
 struct PeerUserpicView {
 	[[nodiscard]] bool null() const {

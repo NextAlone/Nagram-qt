@@ -5,6 +5,7 @@ the official desktop application for the Telegram messaging service.
 For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
+#include "nagram/nagram_settings.h"
 #include "window/window_saved_windows.h"
 
 #include "apiwrap.h"
@@ -940,7 +941,7 @@ SavedWindows::Step *SavedWindows::stepById(int stepId) const {
 QString SavedWindows::shellTitle(
 		const SavedWindow &data,
 		not_null<Main::Session*> session) const {
-	const auto settings = _app->settings().windowTitleContent();
+	const auto settings = Nagram::WindowTitleOptions(_app->settings());
 	const auto name = settings.hideChatName
 		? QString()
 		: st::wrap_rtl(data.title);

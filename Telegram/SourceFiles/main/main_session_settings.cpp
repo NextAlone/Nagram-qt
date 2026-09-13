@@ -6,6 +6,8 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "main/main_session_settings.h"
+#include "nagram/nagram_profile.h"
+#include "nagram/nagram_folders.h"
 
 #include "chat_helpers/tabbed_selector.h"
 #include "ui/widgets/fields/input_field.h"
@@ -31,6 +33,28 @@ SessionSettings::SessionSettings()
 : _selectorTab(ChatHelpers::SelectorTab::Emoji)
 , _supportSwitch(Support::SwitchSettings::Next)
 , _setupEmailState(Data::SetupEmailState::None) {
+}
+
+bool SessionSettings::setLocalAliases(QByteArray serialized) {
+	const auto parsed = Nagram::ParsePeerAliases(serialized);
+	if (!parsed) {
+		return false;
+	}
+	_localAliasesSerialized = std::move(serialized);
+	_localAliases = *parsed;
+	_localAliasesValid = true;
+	return true;
+}
+
+bool SessionSettings::setManagedFolders(QByteArray serialized) {
+	const auto parsed = Nagram::ParseManagedFolders(serialized);
+	if (!parsed) {
+		return false;
+	}
+	_managedFoldersSerialized = std::move(serialized);
+	_managedFolders = *parsed;
+	_managedFoldersValid = true;
+	return true;
 }
 
 QByteArray SessionSettings::serialize() const {
@@ -95,6 +119,11 @@ QByteArray SessionSettings::serialize() const {
 	for (const auto &id : _extraFavoriteReactions) {
 		size += sizeof(quint64) + Serialize::stringSize(id.emoji());
 	}
+
+	size += 2 * sizeof(qint32)
+		+ Serialize::bytearraySize(_nagramFilters.current())
+		+ Serialize::bytearraySize(_localAliasesSerialized)
+		+ Serialize::bytearraySize(_managedFoldersSerialized);
 
 	auto result = QByteArray();
 	result.reserve(size);
@@ -187,6 +216,10 @@ QByteArray SessionSettings::serialize() const {
 		for (const auto &id : _extraFavoriteReactions) {
 			stream << quint64(id.custom()) << id.emoji();
 		}
+		stream << qint32(_startupChatsFilter.current()) << qint32(_lastChatsFilter);
+		stream << _nagramFilters.current();
+		stream << _localAliasesSerialized;
+		stream << _managedFoldersSerialized;
 	}
 
 	Ensures(result.size() == size);
@@ -263,6 +296,11 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	qint32 disableSharingBoxShowsCount = 0;
 	qint32 phoneNumberHidden = 0;
 	std::vector<Data::ReactionId> extraFavoriteReactions;
+	auto startupChatsFilter = qint32(kStartupFilterDefault);
+	auto nagramFilters = QByteArray();
+	auto localAliases = QByteArray();
+	auto managedFolders = QByteArray();
+	auto lastChatsFilter = qint32(0);
 
 	stream >> versionTag;
 	if (versionTag == kVersionTag) {
@@ -745,6 +783,25 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 			}
 		}
 	}
+	if (!stream.atEnd()) {
+		stream >> startupChatsFilter;
+	}
+	if (!stream.atEnd()) {
+		stream >> lastChatsFilter;
+	}
+	if (!stream.atEnd()) {
+		stream >> nagramFilters;
+	}
+	if (!stream.atEnd()) {
+		stream >> localAliases;
+	}
+	if (!stream.atEnd()) {
+		stream >> managedFolders;
+	}
+	if (startupChatsFilter < kStartupFilterDefault || lastChatsFilter < 0) {
+		LOG(("Nagram Error: Invalid session folder preferences."));
+		return;
+	}
 	if (stream.status() != QDataStream::Ok) {
 		LOG(("App Error: "
 			"Bad data for SessionSettings::addFromSerialized()"));
@@ -811,6 +868,23 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	_disableSharingBoxShowsCount = disableSharingBoxShowsCount;
 	_phoneNumberHidden = (phoneNumberHidden == 1);
 	_extraFavoriteReactions = std::move(extraFavoriteReactions);
+	_startupChatsFilter = startupChatsFilter;
+	_nagramFilters = std::move(nagramFilters);
+	_localAliasesSerialized = std::move(localAliases);
+	const auto parsedAliases = Nagram::ParsePeerAliases(_localAliasesSerialized);
+	_localAliasesValid = parsedAliases.has_value();
+	_localAliases = parsedAliases.value_or(Nagram::PeerAliases());
+	if (!_localAliasesValid) {
+		LOG(("Nagram Error: Invalid local aliases; original data preserved."));
+	}
+	_managedFoldersSerialized = std::move(managedFolders);
+	const auto parsedFolders = Nagram::ParseManagedFolders(_managedFoldersSerialized);
+	_managedFoldersValid = parsedFolders.has_value();
+	_managedFolders = parsedFolders.value_or(Nagram::ManagedFolders());
+	if (!_managedFoldersValid) {
+		LOG(("Nagram Error: Invalid managed-folder settings; original data preserved."));
+	}
+	_lastChatsFilter = lastChatsFilter;
 
 	if (version < 2) {
 		app.setLastSeenWarningSeen(appLastSeenWarningSeen == 1);

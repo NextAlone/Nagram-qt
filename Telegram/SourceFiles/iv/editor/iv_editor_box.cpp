@@ -34,6 +34,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "iv/editor/iv_editor_widget.h"
 #include "iv/editor/iv_editor_window.h"
 #include "lang/lang_keys.h"
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
 #include "menu/menu_checked_action.h"
 #include "menu/menu_send_details.h"
 #include "styles/style_settings.h"
@@ -1686,7 +1688,12 @@ void WindowHost::Impl::setupWindow(ShowWindowDescriptor &&descriptor) {
 	if (descriptor.showCreated) {
 		descriptor.showCreated(_show);
 	}
-	window->setTitle(title);
+	Nagram::Value(Core::App().settings(), Nagram::Option::PresentationMode
+	) | rpl::on_next([=](bool presentation) {
+		window->setTitle(presentation
+			? tr::lng_article_editor_title(tr::now)
+			: title);
+	}, window->lifetime());
 	window->setMinimumSize(st::ivEditorWindowMinSize);
 	window->setGeometry(DefaultWindowGeometry(descriptor.centerOver));
 

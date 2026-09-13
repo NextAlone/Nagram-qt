@@ -81,6 +81,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/call_delayed.h"
 #include "base/qt/qt_key_modifiers.h"
 #include "core/application.h"
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_sending.h"
 #include "core/shortcuts.h"
 #include "core/click_handler_types.h"
 #include "core/mime_type.h"
@@ -3120,7 +3122,8 @@ void ChatWidget::updateControlsVisibility() {
 bool ChatWidget::sendExistingDocument(
 		not_null<DocumentData*> document,
 		Api::MessageToSend messageToSend,
-		std::optional<MsgId> localId) {
+		std::optional<MsgId> localId,
+		bool confirmed) {
 	const auto ephemeralReply = session().ephemeralMessages()
 		.isEphemeralBotReply(messageToSend.action.replyTo.messageId);
 	const auto error = !ephemeralReply
@@ -3133,11 +3136,24 @@ bool ChatWidget::sendExistingDocument(
 		|| ShowSendPremiumError(controller(), document)) {
 		return false;
 	}
+	const auto history = _history;
+	if (!confirmed && !messageToSend.action.options.scheduled
+		&& Nagram::ConfirmMediaSend(
+			controller()->uiShow(),
+			document,
+			_peer->name(),
+			crl::guard(this, [=] {
+				if (_history == history) {
+					sendExistingDocument(document, messageToSend, localId, true);
+				}
+			}))) {
+		return false;
+	}
 	if (!ephemeralReply) {
 		const auto withPaymentApproved = [=](int approved) {
 			auto copy = messageToSend;
 			copy.action.options.starsApproved = approved;
-			sendExistingDocument(document, std::move(copy), localId);
+			sendExistingDocument(document, std::move(copy), localId, true);
 		};
 		const auto checked = checkSendPayment(
 			1,
@@ -3206,14 +3222,6 @@ bool ChatWidget::sendExistingPhoto(
 void ChatWidget::sendInlineResult(
 		std::shared_ptr<InlineBots::Result> result,
 		not_null<UserData*> bot) {
-	if (!_canSendMessages) {
-		return;
-	} else if (showSlowmodeError()) {
-		return;
-	} else if (const auto error = result->getErrorOnSend(_history)) {
-		Data::ShowSendErrorToast(controller(), _peer, error);
-		return;
-	}
 	sendInlineResult(std::move(result), bot, {}, std::nullopt);
 	//const auto callback = [=](Api::SendOptions options) {
 	//	sendInlineResult(result, bot, options);
@@ -3227,19 +3235,42 @@ void ChatWidget::sendInlineResult(
 		std::shared_ptr<InlineBots::Result> result,
 		not_null<UserData*> bot,
 		Api::SendOptions options,
-		std::optional<MsgId> localMessageId) {
+		std::optional<MsgId> localMessageId,
+		bool confirmed) {
+	if (!_canSendMessages) {
+		return;
+	} else if (showSlowmodeError()) {
+		return;
+	} else if (const auto error = result->getErrorOnSend(_history)) {
+		Data::ShowSendErrorToast(controller(), _peer, error);
+		return;
+	}
 	if (ShowEphemeralReplyTextOnlyError(
 			controller()->uiShow(),
 			&session(),
 			replyTo().messageId)) {
 		return;
 	}
+	const auto reply = replyTo().messageId;
+	if (!confirmed && !options.scheduled
+		&& Nagram::ConfirmMediaSend(
+			controller()->uiShow(),
+			result->document(),
+			_peer->name(),
+			crl::guard(this, [=] {
+				if (replyTo().messageId == reply) {
+					sendInlineResult(result, bot, options, localMessageId, true);
+				}
+			}))) {
+		return;
+	}
+
 	auto action = prepareSendAction(options);
 	action.generateLocal = true;
 	const auto withPaymentApproved = [=](int approved) {
 		auto copy = options;
 		copy.starsApproved = approved;
-		sendInlineResult(result, bot, copy, localMessageId);
+		sendInlineResult(result, bot, copy, localMessageId, true);
 	};
 	const auto checked = checkSendPayment(
 		1,
@@ -5394,6 +5425,11 @@ void ChatWidget::sendBotCommand(
 	const auto toSend = request.replyTo
 		? request.command
 		: Bot::WrapCommandInChat(_peer, request.command, request.context);
+	if (!request.replyTo
+		&& Nagram::Get(Core::App().settings(), Nagram::Option::BotCommandsToDraft)) {
+		_composeControls->insertBotCommandToField(toSend);
+		return;
+	}
 	auto message = Api::MessageToSend(action);
 	message.textWithTags = { toSend, TextWithTags::Tags() };
 	message.action.replyTo = outgoingReplyTo;

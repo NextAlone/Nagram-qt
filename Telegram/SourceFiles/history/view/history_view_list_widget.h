@@ -378,6 +378,7 @@ public:
 	void selectItem(not_null<HistoryItem*> item);
 	void selectItemAsGroup(not_null<HistoryItem*> item);
 	void selectItemsUpTo(not_null<HistoryItem*> item);
+	void selectLoadedAuthor(PeerId author);
 	[[nodiscard]] bool canSelectItemsUpTo(
 		not_null<HistoryItem*> item) const;
 	void showEditCaptionUploadLayer(not_null<HistoryItem*> item);

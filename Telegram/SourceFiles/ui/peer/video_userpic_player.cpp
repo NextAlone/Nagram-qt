@@ -21,6 +21,29 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Ui {
 
+void PrepareAvatarFrame(
+		Media::Streaming::FrameRequest &request,
+		QSize size,
+		PeerUserpicShape shape,
+		std::array<QImage, 4> &corners,
+		QImage &ellipse) {
+	const auto side = std::min(size.width(), size.height());
+	const auto radius = CustomAvatarRadius(side, shape).value_or(
+		shape == PeerUserpicShape::Forum
+			? int(side * ForumUserpicRadiusMultiplier()) : side / 2);
+	if (radius < side / 2) {
+		if (corners[0].width() != radius * style::DevicePixelRatio()) {
+			corners = Images::CornersMask(radius);
+		}
+		request.rounding = Images::CornersMaskRef(corners);
+	} else {
+		if (ellipse.size() != request.outer) {
+			ellipse = Images::EllipseMask(size);
+		}
+		request.mask = ellipse;
+	}
+}
+
 VideoUserpicPlayer::VideoUserpicPlayer() = default;
 
 VideoUserpicPlayer::~VideoUserpicPlayer() = default;
@@ -60,24 +83,15 @@ QImage VideoUserpicPlayer::frame(
 	const auto ratio = style::DevicePixelRatio();
 	request.outer = request.resize = size * ratio;
 
-	const auto broadcast = peer->monoforumBroadcast();
-
+	const auto shape = peer->userpicShape();
+	const auto broadcast = peer->monoforumBroadcast()
+		&& !CustomAvatarRadius(size.width(), shape);
 	if (broadcast) {
-		if (_monoforumMask.isNull()) {
+		if (_monoforumMask.size() != request.resize) {
 			_monoforumMask = Ui::MonoforumShapeMask(request.resize);
 		}
-	} else if (peer->isForum()) {
-		const auto radius = int(
-			size.width() * Ui::ForumUserpicRadiusMultiplier());
-		if (_roundingCorners[0].width() != radius * ratio) {
-			_roundingCorners = Images::CornersMask(radius);
-		}
-		request.rounding = Images::CornersMaskRef(_roundingCorners);
 	} else {
-		if (_ellipseMask.size() != request.outer) {
-			_ellipseMask = Images::EllipseMask(size);
-		}
-		request.mask = _ellipseMask;
+		PrepareAvatarFrame(request, size, shape, _roundingCorners, _ellipseMask);
 	}
 
 	auto result = _streamed->frame(request);

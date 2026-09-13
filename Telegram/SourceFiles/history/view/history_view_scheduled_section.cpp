@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_scheduled_section.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "history/view/controls/history_view_compose_controls.h"
 #include "history/view/history_view_empty_list_bubble.h"
 #include "history/view/history_view_top_bar_widget.h"
@@ -1608,6 +1611,13 @@ Window::SectionActionResult ScheduledWidget::sendBotCommand(
 void ScheduledWidget::listSendBotCommand(
 		const QString &command,
 		const FullMsgId &context) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::BotCommandsToDraft)) {
+		_composeControls->insertBotCommandToField(Bot::WrapCommandInChat(
+			_history->peer,
+			command,
+			context));
+		return;
+	}
 	const auto callback = [=](Api::SendOptions options) {
 		const auto text = Bot::WrapCommandInChat(
 			_history->peer,

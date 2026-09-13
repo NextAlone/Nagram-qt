@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_emoji_interactions.h"
 
+#include "core/application.h"
 #include "history/view/history_view_element.h"
 #include "history/view/media/history_view_sticker.h"
 #include "history/history.h"
@@ -15,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "chat_helpers/emoji_interactions.h"
 #include "chat_helpers/stickers_lottie.h"
 #include "main/main_session.h"
+#include "nagram/nagram_settings.h"
 #include "data/data_session.h"
 #include "data/data_document.h"
 #include "data/data_document_media.h"
@@ -43,10 +45,20 @@ constexpr auto kDropDelayedAfterDelay = crl::time(2000);
 	};
 }
 
+[[nodiscard]] bool EffectDisabled(Stickers::EffectType type) {
+	const auto option = (type == Stickers::EffectType::PremiumSticker)
+		? Nagram::Option::DisablePremiumStickerEffects
+		: (type == Stickers::EffectType::EmojiInteraction)
+		? Nagram::Option::DisableEmojiInteractions
+		: Nagram::Option::DisableMessageEffects;
+	return Nagram::Get(Core::App().settings(), option);
+}
+
 } // namespace
 
 bool CanPlayEmojiInteraction(not_null<const Element*> view) {
-	if (!view->media()) {
+	if (!view->media()
+		|| EffectDisabled(Stickers::EffectType::EmojiInteraction)) {
 		// Large emoji may be disabled.
 		return false;
 	} else if (!view->isIsolatedEmoji() && !view->isOnlyCustomEmoji()) {
@@ -79,6 +91,31 @@ EmojiInteractions::EmojiInteractions(
 	) | rpl::on_next([=] {
 		checkPendingEffects();
 	}, _lifetime);
+	rpl::combine(
+		Nagram::Value(
+			Core::App().settings(),
+			Nagram::Option::DisablePremiumStickerEffects),
+		Nagram::Value(
+			Core::App().settings(),
+			Nagram::Option::DisableEmojiInteractions),
+		Nagram::Value(
+			Core::App().settings(),
+			Nagram::Option::DisableMessageEffects)
+	) | rpl::skip(1) | rpl::on_next([=] {
+		_plays.erase(ranges::remove_if(_plays, [](const Play &play) {
+			return EffectDisabled(play.type);
+		}), end(_plays));
+		if (EffectDisabled(Stickers::EffectType::EmojiInteraction)) {
+			_delayed.clear();
+		}
+		if (EffectDisabled(Stickers::EffectType::MessageEffect)) {
+			_pendingEffects.clear();
+			_downloadLifetime.destroy();
+		}
+		if (_layer) {
+			_layer->update();
+		}
+	}, _lifetime);
 }
 
 EmojiInteractions::~EmojiInteractions() = default;
@@ -110,6 +147,9 @@ void EmojiInteractions::play(
 bool EmojiInteractions::playPremiumEffect(
 		not_null<const Element*> view,
 		Element *replacing) {
+	if (EffectDisabled(Stickers::EffectType::PremiumSticker)) {
+		return false;
+	}
 	const auto already = ranges::contains(_plays, view, &Play::view);
 	if (replacing) {
 		const auto i = ranges::find(_plays, replacing, &Play::view);
@@ -173,6 +213,9 @@ void EmojiInteractions::playEffectOnRead(not_null<const Element*> view) {
 }
 
 void EmojiInteractions::playEffect(not_null<const Element*> view) {
+	if (EffectDisabled(Stickers::EffectType::MessageEffect)) {
+		return;
+	}
 	if (const auto resolved = resolveEffect(view)) {
 		playEffect(view, resolved);
 	} else if (view->data()->effectId()) {
@@ -251,6 +294,11 @@ void EmojiInteractions::addPendingEffect(not_null<const Element*> view) {
 }
 
 void EmojiInteractions::checkPendingEffects() {
+	if (EffectDisabled(Stickers::EffectType::MessageEffect)) {
+		_pendingEffects.clear();
+		_downloadLifetime.destroy();
+		return;
+	}
 	auto waitingDownload = false;
 	const auto predicate = [&](base::weak_ptr<const Element> weak) {
 		const auto strong = weak.get();
@@ -289,6 +337,9 @@ void EmojiInteractions::play(
 		QString filepath,
 		bool incoming,
 		Stickers::EffectType type) {
+	if (EffectDisabled(type)) {
+		return;
+	}
 	const auto top = _itemTop(view);
 	const auto bottom = top + view->height();
 	if (_visibleTop >= bottom

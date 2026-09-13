@@ -7,6 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/application.h"
 
+#include "nagram/nagram_settings.h"
+#include "ui/chat/chat_style_radius.h"
+#include "ui/chat/chat_style.h"
+#include "ui/userpic_view.h"
+
 #include "data/data_abstract_structure.h"
 #include "data/data_channel.h"
 #include "data/data_forum.h"
@@ -205,6 +210,25 @@ Application::Application()
 	) | rpl::on_next([=] {
 		updateWindowTitles();
 	}, _lifetime);
+	Nagram::Value(settings(), Nagram::Option::NarrowInterfaceSymbols
+	) | rpl::skip(1) | rpl::on_next([=](bool enabled) {
+		_langpack->setNarrowInterfaceSymbols(enabled);
+	}, _lifetime);
+	Nagram::Value(settings(), Nagram::Option::PresentationMode
+	) | rpl::skip(1) | rpl::on_next([=] {
+		updateWindowTitles();
+		if (_notifications) {
+			_notifications->clearAll();
+		}
+	}, _lifetime);
+	Nagram::Value(settings(), Nagram::Option::SimpleQuotesAndReplies
+	) | rpl::on_next([](bool enabled) {
+		Ui::SetSimpleQuotes(enabled);
+	}, _lifetime);
+	Nagram::Value(settings(), Nagram::Option::HideApplicationBadge
+	) | rpl::skip(1) | rpl::on_next([=] {
+		_domain->notifyUnreadBadgeChanged();
+	}, _lifetime);
 
 	_domain->activeSessionChanges(
 	) | rpl::on_next([=](Main::Session *session) {
@@ -309,8 +333,22 @@ void Application::run() {
 	_notifications = std::make_unique<Window::Notifications::System>();
 
 	startLocalStorage();
+	Ui::SetSimpleQuotes(Nagram::Get(settings(), Nagram::Option::SimpleQuotesAndReplies));
+	_screenshotProtection->addContentReason(
+		Nagram::Value(settings(), Nagram::Option::PresentationMode),
+		_lifetime);
+	_langpack->setNarrowInterfaceSymbols(Nagram::Get(
+		settings(), Nagram::Option::NarrowInterfaceSymbols));
+	Ui::SetBubbleRoundness(Nagram::RoundnessValue(
+		settings(), Nagram::Roundness::Bubbles));
+	Ui::SetAvatarRoundness(Nagram::RoundnessValue(
+		settings(), Nagram::Roundness::Avatars),
+		Nagram::Get(settings(), Nagram::Option::UniformAvatarShapes));
 
 	style::SetCustomFont(settings().customFontFamily());
+	const auto monospaceFont = Nagram::MonospaceFont(settings());
+	const auto fontAvailable = Nagram::MonospaceFontAvailable(monospaceFont);
+	style::SetCustomMonospaceFont(fontAvailable ? monospaceFont : QString());
 	style::internal::StartFonts();
 
 	Test::ApplyStartupOverrides();
@@ -442,6 +480,10 @@ void Application::run() {
 
 	DEBUG_LOG(("Application Info: showing."));
 	_lastActivePrimaryWindow->finishFirstShow();
+	if (!fontAvailable) {
+		_lastActivePrimaryWindow->showToast(
+			tr::lng_nagram_monospace_unavailable(tr::now));
+	}
 
 	if (!_lastActivePrimaryWindow->locked() && cStartToSettings()) {
 		_lastActivePrimaryWindow->showSettings();

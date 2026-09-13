@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "apiwrap.h"
 
+#include "nagram/nagram_settings.h"
+#include "nagram/nagram_text.h"
+
 #include "api/api_authorizations.h"
 #include "api/api_attached_stickers.h"
 #include "api/api_blocked_peers.h"
@@ -1612,7 +1615,8 @@ void ApiWrap::requestStickerSets() {
 void ApiWrap::saveStickerSets(
 		const Data::StickersSetsOrder &localOrder,
 		const Data::StickersSetsOrder &localRemoved,
-		Data::StickersType type) {
+		Data::StickersType type,
+		Fn<void(bool)> done) {
 	auto &setDisenableRequests = (type == Data::StickersType::Emoji)
 		? _customEmojiSetDisenableRequests
 		: (type == Data::StickersType::Masks)
@@ -1634,6 +1638,9 @@ void ApiWrap::saveStickerSets(
 
 	const auto stickersSaveOrder = [=] {
 		if (localOrder.size() < 2) {
+			if (done) {
+				done(true);
+			}
 			return;
 		}
 		QVector<MTPlong> mtpOrder;
@@ -1653,8 +1660,14 @@ void ApiWrap::saveStickerSets(
 			MTP_vector<MTPlong>(mtpOrder)
 		)).done([=] {
 			reorderRequestId() = 0;
+			if (done) {
+				done(true);
+			}
 		}).fail([=] {
 			reorderRequestId() = 0;
+			if (done) {
+				done(false);
+			}
 			if (type == Data::StickersType::Emoji) {
 				_session->data().stickers().setLastEmojiUpdate(0);
 				updateCustomEmoji();
@@ -4718,6 +4731,13 @@ void ApiWrap::sendMessage(
 		}
 		return;
 	}
+	const auto forwardFirst = Nagram::Get(
+		Core::App().settings(), Nagram::Option::ForwardBeforeComment)
+		&& !history->resolveForwardDraft(
+			draftTopicRootId, draftMonoforumPeerId).items.empty();
+	if (forwardFirst) {
+		finishForwarding(action);
+	}
 	if (Api::SendDice(message)) {
 		return;
 	}
@@ -4732,6 +4752,7 @@ void ApiWrap::sendMessage(
 		history,
 		_session->user()).flags;
 	TextUtilities::PrepareForSending(left, prepareFlags);
+	left = Nagram::PrepareText(Core::App().settings(), left, false);
 
 	HistoryItem *lastMessage = nullptr;
 

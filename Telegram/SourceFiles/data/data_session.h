@@ -952,6 +952,9 @@ public:
 	void refreshChatListEntry(Dialogs::Key key);
 	void removeChatListEntry(Dialogs::Key key);
 	void refreshChatListUnreadOnTop();
+	[[nodiscard]] const std::vector<QString> &nagramChatSort() const {
+		return _nagramChatSort;
+	}
 	[[nodiscard]] bool dialogsUnreadOnTop() const {
 		return _dialogsUnreadOnTop;
 	}
@@ -1262,6 +1265,7 @@ private:
 	Dialogs::MainList _chatsList;
 	Dialogs::IndexedList _contactsList;
 	Dialogs::IndexedList _contactsNoChatsList;
+	std::vector<QString> _nagramChatSort;
 	bool _dialogsUnreadOnTop = false;
 
 	MsgId _localMessageIdCounter = StartClientMsgId;

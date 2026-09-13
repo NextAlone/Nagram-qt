@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_document.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "base/random.h"
 #include "lang/lang_keys.h"
 #include "lottie/lottie_icon.h"
@@ -40,6 +43,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_document_resolver.h"
 #include "data/data_file_click_handler.h"
 #include "api/api_transcribes.h"
+#include "nagram/nagram_service_boxes.h"
 #include "apiwrap.h"
 #include "styles/style_chat.h"
 #include "styles/style_chat_style.h"
@@ -504,9 +508,11 @@ QSize Document::countOptimalSize() {
 			|| _realParent->isScheduled()
 			|| _realParent->isAdminLogEntry()
 			|| (!session->premium()
+				&& !Nagram::CustomTranscriptionSelected()
 				&& !transcribes->freeFor(_realParent)
 				&& !transcribes->trialsSupport())
 			|| (!session->premium()
+				&& !Nagram::CustomTranscriptionSelected()
 				&& _data->duration() > transcribes->trialsMaxLengthMs())) {
 			voice->transcribe = nullptr;
 			voice->transcribeText = {};
@@ -1987,7 +1993,7 @@ void Document::parentTextUpdated() {
 
 void Document::hideSpoilers() {
 	if (const auto captioned = Get<HistoryDocumentCaptioned>()) {
-		captioned->caption.setSpoilerRevealed(false, anim::type::instant);
+		captioned->caption.setSpoilerRevealed(parent()->spoilersRevealed(), anim::type::instant);
 	}
 }
 

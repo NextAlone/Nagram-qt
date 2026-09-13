@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/controls/history_view_bottom_controls.h"
 
+#include "core/application.h"
+#include "nagram/nagram_settings.h"
+
 #include "apiwrap.h"
 #include "boxes/star_gift_box.h"
 #include "chat_helpers/message_field.h"
@@ -51,6 +54,10 @@ BottomControls::BottomControls(
 	setupOpenChatButton();
 	setupAboutHiddenAuthor();
 	setupPeerUpdates();
+	Nagram::Value(Core::App().settings(), Nagram::Option::HideChannelBottomButton
+	) | rpl::skip(1) | rpl::on_next([=] {
+		updateControlsVisibility();
+	}, lifetime());
 }
 
 BottomControls::~BottomControls() = default;
@@ -564,7 +571,9 @@ bool BottomControls::isJoinGroup() const {
 }
 
 bool BottomControls::isMuteUnmute() const {
-	if (_mode != BottomControlsMode::History) {
+	if (_mode != BottomControlsMode::History
+		|| (_peer->isBroadcast() && _peer->asChannel()->amIn()
+			&& Nagram::Get(Core::App().settings(), Nagram::Option::HideChannelBottomButton))) {
 		return false;
 	}
 	return (_peer->isBroadcast() && !_peer->asChannel()->canPostMessages())

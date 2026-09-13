@@ -8,6 +8,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/sections/settings_local_storage.h"
 
 #include "settings.h"
+#include "apiwrap.h"
+#include "api/api_transcribes.h"
 #include "settings/settings_common.h"
 #include "data/data_session.h"
 #include "lottie/lottie_icon.h"
@@ -1762,6 +1764,7 @@ void LocalStorage::clearSelected() {
 
 void LocalStorage::startClearing() {
 	if (_allSelected.current()) {
+		controller()->session().api().transcribes().clearExternal();
 		_db->clear();
 		_dbBig->clear();
 		Ui::Emoji::ClearIrrelevantCache();
@@ -1772,6 +1775,11 @@ void LocalStorage::startClearing() {
 			continue;
 		}
 		const auto tag = kChartTags[i];
+		if (tag == Data::kVoiceMessageCacheTag
+			|| tag == Data::kVideoMessageCacheTag) {
+			controller()->session().api().transcribes().clearExternal(
+				tag == Data::kVideoMessageCacheTag);
+		}
 		if (tag == kFakeMediaCacheTag) {
 			_dbBig->clear();
 		} else {

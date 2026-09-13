@@ -1382,6 +1382,22 @@ void Account::writeDrafts(not_null<History*> history) {
 	_draftsNotReadMap.remove(peerId);
 }
 
+bool Account::draftSourceHasContent(
+		not_null<History*> history,
+		Data::DraftKey key) const {
+	const auto i = _draftSources.find(history);
+	if (i == _draftSources.end()) {
+		return false;
+	}
+	const auto j = i->second.find(key);
+	if (j == i->second.end()) {
+		return false;
+	}
+	const auto draft = j->second.draft();
+	return !draft.textWithTags.text.isEmpty()
+		|| draft.reply.messageId || draft.suggest.exists;
+}
+
 void Account::writeDraftCursors(not_null<History*> history) {
 	const auto peerId = history->peer->id;
 	const auto &map = history->draftsMap();

@@ -16,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item.h"
 #include "mtproto/mtproto_dh_utils.h"
+#include "nagram/nagram_settings.h"
 #include "core/application.h"
 #include "core/core_settings.h"
 #include "main/session/session_show.h"
@@ -203,6 +204,9 @@ Instance::~Instance() {
 void Instance::startOutgoingCall(
 		not_null<UserData*> user,
 		StartOutgoingCallArgs args) {
+	if (Nagram::Get(Core::App().settings(), Nagram::Option::ConfirmCalls)) {
+		args.isConfirmed = false;
+	}
 	if (activateCurrentCall()
 		|| (!args.isConfirmed && activateUnconfirmedCall(user))) {
 		return;

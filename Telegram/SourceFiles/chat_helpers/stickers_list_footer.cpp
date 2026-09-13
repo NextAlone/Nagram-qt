@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "chat_helpers/stickers_list_footer.h"
 
+#include "nagram/nagram_settings.h"
+
 #include "chat_helpers/emoji_keywords.h"
 #include "chat_helpers/stickers_emoji_pack.h"
 #include "chat_helpers/stickers_lottie.h"
@@ -131,8 +133,13 @@ std::optional<EmojiSection> SetIdEmojiSection(uint64 id) {
 rpl::producer<std::vector<GifSection>> GifSectionsValue(
 		not_null<Main::Session*> session) {
 	const auto config = &session->appConfig();
-	return config->value(
+	return rpl::combine(
+		config->value(),
+		Nagram::Value(Core::App().settings(), Nagram::Option::HideGifShortcuts)
 	) | rpl::map([=] {
+		if (Nagram::Get(Core::App().settings(), Nagram::Option::HideGifShortcuts)) {
+			return std::vector<QString>();
+		}
 		return config->get<std::vector<QString>>(
 			u"gif_search_emojies"_q,
 			GifSearchEmojiFallback());
