@@ -1,6 +1,8 @@
 #include "settings/settings_nagram_filters.h"
 
 #include "base/unique_qptr.h"
+#include "core/application.h"
+#include "core/core_settings.h"
 #include "data/data_peer.h"
 #include "history/history.h"
 #include "history/history_item.h"
@@ -8,6 +10,7 @@
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
 #include "nagram/nagram_filters.h"
+#include "nagram/nagram_menu.h"
 #include "settings/settings_builder.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/layers/generic_box.h"
@@ -353,6 +356,9 @@ void AddNagramFilterMenu(
 	if (!ValidateFilters(current).isEmpty()) {
 		return;
 	}
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Filter)) {
+		return;
+	}
 	for (const auto &key : { u"hiddenAuthors"_q, u"excludedPeers"_q }) {
 		const auto author = key == u"hiddenAuthors"_q;
 		const auto id = QString::number(SerializePeerId(
@@ -366,26 +372,30 @@ void AddNagramFilterMenu(
 				: tr::lng_nagram_filter_author_hide(tr::now))
 			: (contains ? tr::lng_nagram_filter_chat_enable(tr::now)
 				: tr::lng_nagram_filter_chat_disable(tr::now));
-		menu->addAction(label, crl::guard(controller, [=] {
-			auto updated = ReadFilters(session);
-			if (!ValidateFilters(updated).isEmpty()) {
-				controller->showToast(tr::lng_nagram_filter_invalid(tr::now));
-				return;
-			}
-			auto list = updated.value(key).toArray();
-			if (const auto index = list.toVariantList().indexOf(id); index >= 0) {
-				list.removeAt(index);
-			} else {
-				list.push_back(id);
-			}
-			updated.insert(key, list);
-			if (const auto error = ValidateFilters(updated); !error.isEmpty()) {
-				controller->showToast(error);
-				return;
-			}
-			SetFilters(session, updated);
-			controller->showToast(tr::lng_nagram_filter_menu_saved(tr::now));
-		}));
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::Filter,
+			label,
+			crl::guard(controller, [=] {
+				auto updated = ReadFilters(session);
+				if (!ValidateFilters(updated).isEmpty()) {
+					controller->showToast(tr::lng_nagram_filter_invalid(tr::now));
+					return;
+				}
+				auto list = updated.value(key).toArray();
+				if (const auto index = list.toVariantList().indexOf(id); index >= 0) {
+					list.removeAt(index);
+				} else {
+					list.push_back(id);
+				}
+				updated.insert(key, list);
+				if (const auto error = ValidateFilters(updated); !error.isEmpty()) {
+					controller->showToast(error);
+					return;
+				}
+				SetFilters(session, updated);
+				controller->showToast(tr::lng_nagram_filter_menu_saved(tr::now));
+			}));
 	}
 }
 

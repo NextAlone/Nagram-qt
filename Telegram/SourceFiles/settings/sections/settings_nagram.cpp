@@ -607,45 +607,8 @@ void BuildNagram(SectionBuilder &builder) {
 		::Nagram::Option::HideAutoDeleteButton,
 		tr::lng_nagram_hide_auto_delete_button(),
 		tr::lng_nagram_hide_auto_delete_button_about());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuPin,
-		tr::lng_nagram_hide_menu_pin());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuReport,
-		tr::lng_nagram_hide_menu_report(),
-		tr::lng_nagram_hide_menu_report_about());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuBlock,
-		tr::lng_nagram_hide_menu_block(),
-		tr::lng_nagram_hide_menu_block_about());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuStatistics,
-		tr::lng_nagram_hide_menu_statistics());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuCopyLink,
-		tr::lng_nagram_hide_menu_copy_link());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuForward,
-		tr::lng_nagram_hide_menu_forward());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuTranslate,
-		tr::lng_nagram_hide_menu_translate());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuSelect,
-		tr::lng_nagram_hide_menu_select(),
-		tr::lng_nagram_hide_menu_select_about());
-	AddOption(
-		builder,
-		::Nagram::Option::HideMenuEmojiPacks,
-		tr::lng_nagram_hide_menu_emoji_packs());
+	// Message-menu visibility (HideMenu* options) now lives in the unified
+	// configurable menu list (nagram.messageMenu / BuildNagramMenu).
 	AddOption(
 		builder,
 		::Nagram::Option::ShowMessageId,

@@ -33,8 +33,40 @@ enum class MenuAction {
 	Save,
 	Delete,
 	EmojiPacks,
+	// Order of the entries above is frozen: stored `order[]` arrays rely on
+	// their string ids, and new entries must always be appended before Count.
+	Repeat,
+	RepeatNoQuote,
+	ForwardNoQuote,
+	SelectAuthor,
+	Snapshot,
+	Batch,
+	Filter,
+	StickerSet,
+	SaveSticker,
+	OpenGif,
+	SaveGif,
+	ShowInFolder,
+	OpenWith,
+	Transcribe,
+	Offer,
+	SendNow,
+	Reschedule,
+	TodoAdd,
+	ViewReplies,
+	Factcheck,
+	GoToMessage,
+	PollRetract,
+	PollStop,
+	SaveRingtone,
+	MessageAuthor,
+	SendGift,
 	Count,
 };
+
+// Actions hidden by default (Nagram enhancements and the repeat family). Every
+// other action is shown by default in its native position.
+[[nodiscard]] bool MenuActionDefaultHidden(MenuAction action);
 
 [[nodiscard]] QString MenuActionId(MenuAction action);
 [[nodiscard]] QString MenuActionTitle(MenuAction action);
@@ -46,6 +78,11 @@ void SetMenuTools(Core::Settings &settings, const QJsonObject &value);
 [[nodiscard]] bool MenuHidden(
 	Core::Settings &settings,
 	Option option,
+	Qt::KeyboardModifiers modifiers);
+[[nodiscard]] bool MenuHidden(Core::Settings &settings, MenuAction action);
+[[nodiscard]] bool MenuHidden(
+	Core::Settings &settings,
+	MenuAction action,
 	Qt::KeyboardModifiers modifiers);
 not_null<QAction*> AddOrderedMenuAction(
 	not_null<Ui::PopupMenu*> menu,

@@ -95,6 +95,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "nagram/nagram_reading.h"
 #include "nagram/nagram_snapshot.h"
 #include "nagram/nagram_batch.h"
+#include "nagram/nagram_repeat.h"
 #include "settings/settings_nagram_filters.h"
 #include "nagram/nagram_media.h"
 #include "iv/editor/iv_editor_session.h"
@@ -3005,12 +3006,15 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					lt_count,
 					repliesCount)
 				: tr::lng_replies_view_thread(tr::now);
-			_menu->addAction(phrase, [=] {
-				controller->showRepliesForMessage(
-					_history,
-					rootId,
-					highlightId);
-			}, &st::menuIconViewReplies);
+			if (!Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::ViewReplies)) {
+				Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::ViewReplies,
+					phrase, [=] {
+					controller->showRepliesForMessage(
+						_history,
+						rootId,
+						highlightId);
+				}, &st::menuIconViewReplies);
+			}
 		}
 		const auto t = base::unixtime::now();
 		const auto editItem = (albumPartItem && albumPartItem->allowsEdit(t))
@@ -3046,14 +3050,17 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			const auto phrase = text.empty()
 				? tr::lng_context_add_factcheck(tr::now)
 				: tr::lng_context_edit_factcheck(tr::now);
-			_menu->addAction(phrase, [=] {
-				const auto limit = session->factchecks().lengthLimit();
-				controller->show(Box(EditFactcheckBox, text, limit, [=](
-						TextWithEntities result) {
-					const auto show = controller->uiShow();
-					session->factchecks().save(itemId, text, result, show);
-				}, FactcheckFieldIniter(controller->uiShow())));
-			}, &st::menuIconFactcheck);
+			if (!Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Factcheck)) {
+				Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::Factcheck,
+					phrase, [=] {
+					const auto limit = session->factchecks().lengthLimit();
+					controller->show(Box(EditFactcheckBox, text, limit, [=](
+							TextWithEntities result) {
+						const auto show = controller->uiShow();
+						session->factchecks().save(itemId, text, result, show);
+					}, FactcheckFieldIniter(controller->uiShow())));
+				}, &st::menuIconFactcheck);
+			}
 		}
 		const auto pinItem = (item->canPin() && item->isPinned())
 			? item
@@ -3105,8 +3112,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 				},
 				&st::menuIconCopy);
 		}
-		if (photo->hasAttachedStickers()) {
-			_menu->addAction(tr::lng_context_attached_stickers(tr::now), [=] {
+		if (photo->hasAttachedStickers()
+			&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::StickerSet)) {
+			Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::StickerSet,
+				tr::lng_context_attached_stickers(tr::now), [=] {
 				session->api().attachedStickers().requestAttachedStickerSets(
 					controller,
 					photo);
@@ -3130,19 +3139,25 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 						item->history()->peer,
 						document);
 			}();
-			if (notAutoplayedGif) {
-				_menu->addAction(tr::lng_context_open_gif(tr::now), [=] {
+			if (notAutoplayedGif
+				&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::OpenGif)) {
+				Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::OpenGif,
+					tr::lng_context_open_gif(tr::now), [=] {
 					openContextGif(itemId);
 				}, &st::menuIconShowInChat);
 			}
-			if (!hasCopyMediaRestriction(item)) {
-				_menu->addAction(tr::lng_context_save_gif(tr::now), [=] {
+			if (!hasCopyMediaRestriction(item)
+				&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SaveGif)) {
+				Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::SaveGif,
+					tr::lng_context_save_gif(tr::now), [=] {
 					saveContextGif(itemId);
 				}, &st::menuIconGif);
 			}
 		}
-		if (!document->filepath(true).isEmpty()) {
-			_menu->addAction(Platform::IsMac() ? tr::lng_context_show_in_finder(tr::now) : tr::lng_context_show_in_folder(tr::now), [=] {
+		if (!document->filepath(true).isEmpty()
+			&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::ShowInFolder)) {
+			Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::ShowInFolder,
+				Platform::IsMac() ? tr::lng_context_show_in_finder(tr::now) : tr::lng_context_show_in_folder(tr::now), [=] {
 				showContextInFolder(document);
 			}, &st::menuIconShowInFolder);
 		}
@@ -3164,8 +3179,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 				document,
 				[=] { return showCopyRestrictionForSelected(); });
 		}
-		if (document->hasAttachedStickers()) {
-			_menu->addAction(tr::lng_context_attached_stickers(tr::now), [=] {
+		if (document->hasAttachedStickers()
+			&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::StickerSet)) {
+			Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::StickerSet,
+				tr::lng_context_attached_stickers(tr::now), [=] {
 				session->api().attachedStickers().requestAttachedStickerSets(
 					controller,
 					document);
@@ -3178,10 +3195,12 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 		}
 		if (item && Nagram::CustomTranscriptionSelected()
 			&& (document->isVoiceMessage() || document->isVideoMessage())
-			&& !HistoryView::ItemHasTtl(item)) {
+			&& !HistoryView::ItemHasTtl(item)
+			&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Transcribe)) {
 			const auto id = item->fullId();
 			const auto show = controller->uiShow();
-			_menu->addAction(tr::lng_nagram_service_transcription(tr::now), [=] {
+			Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::Transcribe,
+				tr::lng_nagram_service_transcription(tr::now), [=] {
 				if (const auto current = show->session().data().message(id)) {
 					Nagram::ShowCustomTranscription(show, current, true);
 				}
@@ -3244,41 +3263,43 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					}
 				},
 				&st::menuIconSelect);
-			Nagram::AddOrderedMenuAction(
-				_menu.get(),
-				Nagram::MenuAction::Select,
-				tr::lng_nagram_select_author(tr::now),
-				crl::guard(this, [=] {
-					const auto source = session->data().message(itemId);
-					if (!source || hasSelectRestriction()) {
-						return;
-					}
-					auto selected = _selected;
-					for (const auto history : { _migrated, _history.get() }) {
-						if (!history) {
-							continue;
+			if (!Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SelectAuthor)) {
+				Nagram::AddOrderedMenuAction(
+					_menu.get(),
+					Nagram::MenuAction::SelectAuthor,
+					tr::lng_nagram_select_author(tr::now),
+					crl::guard(this, [=] {
+						const auto source = session->data().message(itemId);
+						if (!source || hasSelectRestriction()) {
+							return;
 						}
-						for (const auto &block : history->blocks) {
-							for (const auto &view : block->messages) {
-								const auto item = view->data();
-								if (item->from() != source->from() || !item->canBeSelected()) {
-									continue;
+						auto selected = _selected;
+						for (const auto history : { _migrated, _history.get() }) {
+							if (!history) {
+								continue;
+							}
+							for (const auto &block : history->blocks) {
+								for (const auto &view : block->messages) {
+									const auto item = view->data();
+									if (item->from() != source->from() || !item->canBeSelected()) {
+										continue;
+									}
+									if (!selected.contains(item) && selected.size() >= MaxSelectedItems) {
+										controller->showToast(tr::lng_nagram_selection_limit(tr::now));
+										return;
+									}
+									changeSelection(&selected, item, SelectAction::Select);
 								}
-								if (!selected.contains(item) && selected.size() >= MaxSelectedItems) {
-									controller->showToast(tr::lng_nagram_selection_limit(tr::now));
-									return;
-								}
-								changeSelection(&selected, item, SelectAction::Select);
 							}
 						}
-					}
-					clearTextSelection();
-					_selected = std::move(selected);
-					_accessibilitySelectionAnchor = nullptr;
-					update();
-					_widget->updateTopBarSelection();
-				}),
-				&st::menuIconSelect);
+						clearTextSelection();
+						_selected = std::move(selected);
+						_accessibilitySelectionAnchor = nullptr;
+						update();
+						_widget->updateTopBarSelection();
+					}),
+					&st::menuIconSelect);
+			}
 			const auto collectBetween = [=](
 					not_null<HistoryItem*> from,
 					not_null<HistoryItem*> to,
@@ -3446,9 +3467,13 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 	const auto addTodoListAction = [&](HistoryItem *item) {
 		if (!item || !Window::PeerMenuShowAddTodoListTasks(item)) {
 			return;
+		} else if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::TodoAdd)) {
+			return;
 		}
 		const auto itemId = item->fullId();
-		_menu->addAction(
+		Nagram::AddOrderedMenuAction(
+			_menu,
+			Nagram::MenuAction::TodoAdd,
 			tr::lng_todo_add_title(tr::now),
 			crl::guard(this, [=] {
 				if (const auto item = session->data().message(itemId)) {
@@ -3583,8 +3608,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 						},
 						&st::menuIconForward);
 				}
-				if (HistoryView::CanAddOfferToMessage(item)) {
-					_menu->addAction(tr::lng_context_add_offer(tr::now), [=] {
+				if (HistoryView::CanAddOfferToMessage(item)
+					&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Offer)) {
+					Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::Offer,
+						tr::lng_context_add_offer(tr::now), [=] {
 						Api::AddOfferToMessage(_controller->uiShow(), itemId);
 					}, &st::menuIconTagSell);
 				}
@@ -3739,18 +3766,23 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					if (!view->isIsolatedEmoji() && document->sticker()) {
 						const auto sending = item->isSending();
 						if (document->sticker()->set) {
-							_menu->addAction(document->isStickerSetInstalled() ? tr::lng_context_pack_info(tr::now) : tr::lng_context_pack_add(tr::now), [=] {
-								showStickerPackInfo(document);
-							}, &st::menuIconStickers);
+							if (!Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::StickerSet)) {
+								Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::StickerSet,
+									document->isStickerSetInstalled() ? tr::lng_context_pack_info(tr::now) : tr::lng_context_pack_add(tr::now), [=] {
+									showStickerPackInfo(document);
+								}, &st::menuIconStickers);
+							}
 						} else if (!sending) {
 							Api::AddAddToOwnedSetAction(
 								Ui::Menu::CreateAddActionCallback(_menu),
 								_controller->uiShow(),
 								document);
 						}
-						if (!sending) {
+						if (!sending
+							&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SaveSticker)) {
 							const auto isFaved = session->data().stickers().isFaved(document);
-							_menu->addAction(isFaved ? tr::lng_faved_stickers_remove(tr::now) : tr::lng_faved_stickers_add(tr::now), [=] {
+							Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::SaveSticker,
+								isFaved ? tr::lng_faved_stickers_remove(tr::now) : tr::lng_faved_stickers_add(tr::now), [=] {
 								Api::ToggleFavedSticker(controller->uiShow(), document, itemId);
 							}, isFaved ? &st::menuIconUnfave : &st::menuIconFave);
 						}
@@ -3802,8 +3834,11 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 								&& (starGiftUpgrade ? !out : out);
 							if (outgoingGift
 								&& gift->type
-									!= Data::GiftType::BirthdaySuggest) {
-								_menu->addAction(
+									!= Data::GiftType::BirthdaySuggest
+								&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SendGift)) {
+								Nagram::AddOrderedMenuAction(
+									_menu,
+									Nagram::MenuAction::SendGift,
 									tr::lng_context_gift_send(tr::now),
 									[=] {
 										Ui::ShowStarGiftBox(controller, peer);
@@ -3968,8 +4003,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 						},
 						&st::menuIconForward);
 				}
-				if (HistoryView::CanAddOfferToMessage(item)) {
-					_menu->addAction(tr::lng_context_add_offer(tr::now), [=] {
+				if (HistoryView::CanAddOfferToMessage(item)
+					&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Offer)) {
+					Nagram::AddOrderedMenuAction(_menu, Nagram::MenuAction::Offer,
+						tr::lng_context_add_offer(tr::now), [=] {
 						Api::AddOfferToMessage(_controller->uiShow(), itemId);
 					}, &st::menuIconTagSell);
 				}
@@ -4042,6 +4079,7 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 	if (_dragStateItem) {
 		Nagram::AddReadingMenu(_menu, _dragStateItem);
 		Settings::AddNagramFilterMenu(_menu, _dragStateItem, controller);
+		Nagram::AddRepeatActions(_menu, controller, _dragStateItem);
 		const auto view = viewByItem(_dragStateItem);
 		const auto textItem = view ? view->textItem() : _dragStateItem;
 		const auto wasAmount = _menu->actions().size();

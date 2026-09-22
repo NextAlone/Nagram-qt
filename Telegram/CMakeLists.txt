@@ -1699,6 +1699,8 @@ PRIVATE
     nagram/nagram_text.h
     nagram/nagram_menu.cpp
     nagram/nagram_menu.h
+    nagram/nagram_repeat.cpp
+    nagram/nagram_repeat.h
     nagram/nagram_services.cpp
     nagram/nagram_services.h
     nagram/nagram_credentials.cpp
@@ -1718,6 +1720,8 @@ PRIVATE
     nagram/nagram_snapshot.h
     nagram/nagram_batch.cpp
     nagram/nagram_batch.h
+    nagram/nagram_repeat.cpp
+    nagram/nagram_repeat.h
     nagram/nagram_links.cpp
     nagram/nagram_links.h
     nagram/nagram_profile.cpp

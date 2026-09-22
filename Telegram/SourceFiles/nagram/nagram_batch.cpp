@@ -15,6 +15,7 @@
 #include "main/main_session.h"
 #include "mainwidget.h"
 #include "nagram/nagram_filters.h"
+#include "nagram/nagram_menu.h"
 #include "nagram/nagram_text.h"
 #include "storage/storage_account.h"
 #include "ui/layers/generic_box.h"
@@ -290,9 +291,16 @@ void AddMessageBatchAction(
 	})) {
 		return;
 	}
-	menu->addAction(tr::lng_nagram_batch_title(tr::now), crl::guard(controller, [=] {
-		controller->show(Box(MessageBatchBox, controller, ids));
-	}));
+	if (MenuHidden(Core::App().settings(), MenuAction::Batch)) {
+		return;
+	}
+	AddOrderedMenuAction(
+		menu,
+		MenuAction::Batch,
+		tr::lng_nagram_batch_title(tr::now),
+		crl::guard(controller, [=] {
+			controller->show(Box(MessageBatchBox, controller, ids));
+		}));
 }
 
 } // namespace Nagram

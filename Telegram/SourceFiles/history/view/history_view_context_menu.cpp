@@ -117,6 +117,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "nagram/nagram_reading.h"
 #include "nagram/nagram_snapshot.h"
 #include "nagram/nagram_batch.h"
+#include "nagram/nagram_repeat.h"
 #include "settings/settings_nagram_filters.h"
 #include "nagram/nagram_media.h"
 #include "spellcheck/spellcheck_types.h"
@@ -398,13 +399,14 @@ void AddPhotoActions(
 			},
 			&st::menuIconCopy);
 	}
-	if (photo->hasAttachedStickers()) {
+	if (photo->hasAttachedStickers()
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::StickerSet)) {
 		const auto controller = list->controller();
 		auto callback = [=] {
 			auto &attached = photo->session().api().attachedStickers();
 			attached.requestAttachedStickerSets(controller, photo);
 		};
-		menu->addAction(
+		Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::StickerSet,
 			tr::lng_context_attached_stickers(tr::now),
 			std::move(callback),
 			&st::menuIconStickers);
@@ -464,22 +466,27 @@ void AddDocumentActions(
 			document->session().settings().autoDownload(),
 			item->history()->peer,
 			document);
-		if (notAutoplayedGif) {
+		if (notAutoplayedGif
+			&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::OpenGif)) {
 			const auto weak = base::make_weak(list.get());
-			menu->addAction(tr::lng_context_open_gif(tr::now), [=] {
+			Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::OpenGif,
+				tr::lng_context_open_gif(tr::now), [=] {
 				if (const auto strong = weak.get()) {
 					OpenGif(strong, contextId);
 				}
 			}, &st::menuIconShowInChat);
 		}
-		if (!list->hasCopyMediaRestriction(item)) {
-			menu->addAction(tr::lng_context_save_gif(tr::now), [=] {
+		if (!list->hasCopyMediaRestriction(item)
+			&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SaveGif)) {
+			Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::SaveGif,
+				tr::lng_context_save_gif(tr::now), [=] {
 				SaveGif(list->controller(), contextId);
 			}, &st::menuIconGif);
 		}
 	}
-	if (document->sticker() && document->sticker()->set) {
-		menu->addAction(
+	if (document->sticker() && document->sticker()->set
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::StickerSet)) {
+		Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::StickerSet,
 			(document->isStickerSetInstalled()
 				? tr::lng_context_pack_info(tr::now)
 				: tr::lng_context_pack_add(tr::now)),
@@ -493,30 +500,33 @@ void AddDocumentActions(
 			controller->uiShow(),
 			document);
 	}
-	if (!sending && document->sticker()) {
+	if (!sending && document->sticker()
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SaveSticker)) {
 		const auto isFaved = document->owner().stickers().isFaved(document);
-		menu->addAction(
+		Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::SaveSticker,
 			(isFaved
 				? tr::lng_faved_stickers_remove(tr::now)
 				: tr::lng_faved_stickers_add(tr::now)),
 			[=] { ToggleFavedSticker(controller, document, contextId); },
 			isFaved ? &st::menuIconUnfave : &st::menuIconFave);
 	}
-	if (!document->filepath(true).isEmpty()) {
-		menu->addAction(
+	if (!document->filepath(true).isEmpty()
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::ShowInFolder)) {
+		Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::ShowInFolder,
 			(Platform::IsMac()
 				? tr::lng_context_show_in_finder(tr::now)
 				: tr::lng_context_show_in_folder(tr::now)),
 			[=] { ShowInFolder(document); },
 			&st::menuIconShowInFolder);
 	}
-	if (document->hasAttachedStickers()) {
+	if (document->hasAttachedStickers()
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::StickerSet)) {
 		const auto controller = list->controller();
 		auto callback = [=] {
 			auto &attached = session->api().attachedStickers();
 			attached.requestAttachedStickerSets(controller, document);
 		};
-		menu->addAction(
+		Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::StickerSet,
 			tr::lng_context_attached_stickers(tr::now),
 			std::move(callback),
 			&st::menuIconStickers);
@@ -537,10 +547,12 @@ void AddDocumentActions(
 	}
 	if (item && Nagram::CustomTranscriptionSelected()
 		&& (document->isVoiceMessage() || document->isVideoMessage())
-		&& !ItemHasTtl(item)) {
+		&& !ItemHasTtl(item)
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Transcribe)) {
 		const auto id = item->fullId();
 		const auto show = list->controller()->uiShow();
-		menu->addAction(tr::lng_nagram_service_transcription(tr::now), [=] {
+		Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::Transcribe,
+			tr::lng_nagram_service_transcription(tr::now), [=] {
 			if (const auto current = show->session().data().message(id)) {
 				Nagram::ShowCustomTranscription(show, current, true);
 			}
@@ -685,7 +697,11 @@ void AddOfferAction(
 	}
 	const auto controller = list->controller();
 	const auto itemId = item->fullId();
-	menu->addAction(tr::lng_context_add_offer(tr::now), crl::guard(controller, [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Offer)) {
+		return;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::Offer,
+		tr::lng_context_add_offer(tr::now), crl::guard(controller, [=] {
 		Api::AddOfferToMessage(controller->uiShow(), itemId);
 	}), &st::menuIconTagSell);
 }
@@ -716,7 +732,11 @@ bool AddSendNowSelectedAction(
 	}
 	const auto history = *histories.begin();
 
-	menu->addAction(tr::lng_context_send_now_selected(tr::now), [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SendNow)) {
+		return false;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::SendNow,
+		tr::lng_context_send_now_selected(tr::now), [=] {
 		const auto weak = base::make_weak(list);
 		const auto callback = [=] {
 			request.navigation->showBackFromStack();
@@ -750,7 +770,11 @@ bool AddSendNowMessageAction(
 		}
 	}
 	const auto itemId = item->fullId();
-	menu->addAction(tr::lng_context_send_now_msg(tr::now), [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SendNow)) {
+		return false;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::SendNow,
+		tr::lng_context_send_now_msg(tr::now), [=] {
 		if (const auto item = owner->message(itemId)) {
 			Window::ShowSendNowMessagesBox(
 				request.navigation,
@@ -800,7 +824,11 @@ bool AddRescheduleAction(
 		? tr::lng_context_reschedule
 		: tr::lng_context_reschedule_selected)(tr::now);
 
-	menu->addAction(std::move(text), [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Reschedule)) {
+		return false;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::Reschedule,
+		std::move(text), [=] {
 		const auto firstItem = owner->message(ids.front());
 		if (!firstItem) {
 			return;
@@ -936,7 +964,11 @@ bool AddTodoListAction(
 	}
 	const auto itemId = item->fullId();
 	const auto controller = list->controller();
-	menu->addAction(tr::lng_todo_add_title(tr::now), [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::TodoAdd)) {
+		return false;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::TodoAdd,
+		tr::lng_todo_add_title(tr::now), [=] {
 		if (const auto item = controller->session().data().message(itemId)) {
 			Window::PeerMenuAddTodoListTasks(controller, item);
 		}
@@ -981,7 +1013,11 @@ bool AddViewRepliesAction(
 		: tr::lng_replies_view_thread(tr::now);
 	const auto controller = list->controller();
 	const auto history = item->history();
-	menu->addAction(phrase, crl::guard(controller, [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::ViewReplies)) {
+		return false;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::ViewReplies,
+		phrase, crl::guard(controller, [=] {
 		controller->showRepliesForMessage(
 			history,
 			rootId,
@@ -1049,7 +1085,11 @@ void AddFactcheckAction(
 	const auto phrase = text.empty()
 		? tr::lng_context_add_factcheck(tr::now)
 		: tr::lng_context_edit_factcheck(tr::now);
-	menu->addAction(phrase, [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::Factcheck)) {
+		return;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::Factcheck,
+		phrase, [=] {
 		const auto limit = session->factchecks().lengthLimit();
 		const auto controller = request.navigation->parentController();
 		controller->show(Box(EditFactcheckBox, text, limit, [=](
@@ -1137,7 +1177,11 @@ bool AddGoToMessageAction(
 	}
 	const auto itemId = view->data()->fullId();
 	const auto controller = list->controller();
-	menu->addAction(tr::lng_context_to_msg(tr::now), crl::guard(controller, [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::GoToMessage)) {
+		return false;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::GoToMessage,
+		tr::lng_context_to_msg(tr::now), crl::guard(controller, [=] {
 		if (const auto item = controller->session().data().message(itemId)) {
 			controller->showMessage(item);
 		}
@@ -1448,16 +1492,18 @@ bool AddSelectMessageAction(
 			},
 			&st::menuIconSelect);
 	}
-	Nagram::AddOrderedMenuAction(
-		menu,
-		Nagram::MenuAction::Select,
-		tr::lng_nagram_select_author(tr::now),
-		crl::guard(list, [=] {
-			if (const auto item = owner->message(itemId)) {
-				list->selectLoadedAuthor(item->from()->id);
-			}
-		}),
-		&st::menuIconSelect);
+	if (!Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SelectAuthor)) {
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::SelectAuthor,
+			tr::lng_nagram_select_author(tr::now),
+			crl::guard(list, [=] {
+				if (const auto item = owner->message(itemId)) {
+					list->selectLoadedAuthor(item->from()->id);
+				}
+			}),
+			&st::menuIconSelect);
+	}
 	return true;
 }
 
@@ -2019,8 +2065,11 @@ void FillContextMenuItems(
 				const auto outgoingGift = isGift
 					&& (starGiftUpgrade ? !out : out);
 				if (outgoingGift
-					&& gift->type != Data::GiftType::BirthdaySuggest) {
-					result->addAction(
+					&& gift->type != Data::GiftType::BirthdaySuggest
+					&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SendGift)) {
+					Nagram::AddOrderedMenuAction(
+						result,
+						Nagram::MenuAction::SendGift,
 						tr::lng_context_gift_send(tr::now),
 						crl::guard(controller, [=] {
 							Ui::ShowStarGiftBox(controller, peer);
@@ -2146,6 +2195,7 @@ base::unique_qptr<Ui::PopupMenu> FillContextMenu(
 	if (item && request.selectedItems.empty()) {
 		Nagram::AddReadingMenu(result, item);
 		Settings::AddNagramFilterMenu(result, item, list->controller());
+		Nagram::AddRepeatActions(result, list->controller(), item, request);
 	}
 
 	if (item) {
@@ -2567,13 +2617,17 @@ void AddPollActions(
 	if (!skipRetractVote
 		&& poll->voted()
 		&& !poll->quiz()
-		&& !poll->revotingDisabled()) {
-		menu->addAction(tr::lng_polls_retract(tr::now), [=] {
+		&& !poll->revotingDisabled()
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::PollRetract)) {
+		Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::PollRetract,
+			tr::lng_polls_retract(tr::now), [=] {
 			poll->session().api().polls().sendVotes(itemId, {});
 		}, &st::menuIconRetractVote);
 	}
-	if (item->canStopPoll()) {
-		menu->addAction(tr::lng_polls_stop(tr::now), [=] {
+	if (item->canStopPoll()
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::PollStop)) {
+		Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::PollStop,
+			tr::lng_polls_stop(tr::now), [=] {
 			controller->show(Ui::MakeConfirmBox({
 				.text = tr::lng_polls_stop_warning(),
 				.confirmed = [=](Fn<void()> &&close) {
@@ -2616,7 +2670,11 @@ void AddSaveSoundForNotifications(
 		return;
 	}
 	const auto show = controller->uiShow();
-	menu->addAction(tr::lng_context_save_custom_sound(tr::now), [=] {
+	if (Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::SaveRingtone)) {
+		return;
+	}
+	Nagram::AddOrderedMenuAction(menu, Nagram::MenuAction::SaveRingtone,
+		tr::lng_context_save_custom_sound(tr::now), [=] {
 		Api::ToggleSavedRingtone(
 			document,
 			item->fullId(),
@@ -2667,11 +2725,15 @@ void AddWhenEditedForwardedAuthorActionHelper(
 			}
 		}
 	}
-	if (item->canLookupMessageAuthor()) {
+	if (item->canLookupMessageAuthor()
+		&& !Nagram::MenuHidden(Core::App().settings(), Nagram::MenuAction::MessageAuthor)) {
 		if (insertSeparator && !menu->empty()) {
 			menu->addSeparator(&st::expandedMenuSeparator);
 		}
-		menu->addAction(MakeMessageAuthorAction(menu, item, controller));
+		Nagram::AddOrderedMenuAction(
+			menu,
+			Nagram::MenuAction::MessageAuthor,
+			MakeMessageAuthorAction(menu, item, controller));
 	}
 }
 

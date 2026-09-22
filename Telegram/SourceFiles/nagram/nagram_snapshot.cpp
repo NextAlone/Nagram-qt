@@ -12,6 +12,7 @@
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "nagram/nagram_filters.h"
+#include "nagram/nagram_menu.h"
 #include "ui/chat/chat_style.h"
 #include "ui/chat/chat_theme.h"
 #include "ui/layers/generic_box.h"
@@ -360,9 +361,16 @@ void AddSnapshotAction(
 	if (!AllAvailable(controller, ids)) {
 		return;
 	}
-	menu->addAction(tr::lng_nagram_snapshot(tr::now), crl::guard(controller, [=] {
-		controller->show(Box(SnapshotBox, controller, ids));
-	}));
+	if (MenuHidden(Core::App().settings(), MenuAction::Snapshot)) {
+		return;
+	}
+	AddOrderedMenuAction(
+		menu,
+		MenuAction::Snapshot,
+		tr::lng_nagram_snapshot(tr::now),
+		crl::guard(controller, [=] {
+			controller->show(Box(SnapshotBox, controller, ids));
+		}));
 }
 
 } // namespace Nagram
