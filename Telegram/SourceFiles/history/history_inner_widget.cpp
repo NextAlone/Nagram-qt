@@ -4076,7 +4076,7 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 	Nagram::AddMessageBatchAction(_menu, controller,
 		!getSelectedItems().empty() ? getSelectedItems()
 			: _dragStateItem ? MessageIdsList{ _dragStateItem->fullId() } : MessageIdsList());
-	if (_dragStateItem) {
+	if (_dragStateItem && getSelectedItems().empty()) {
 		Nagram::AddReadingMenu(_menu, _dragStateItem);
 		Settings::AddNagramFilterMenu(_menu, _dragStateItem, controller);
 		Nagram::AddRepeatActions(_menu, controller, _dragStateItem);

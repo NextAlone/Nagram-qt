@@ -2192,10 +2192,10 @@ base::unique_qptr<Ui::PopupMenu> FillContextMenu(
 		request.overSelection && !request.selectedItems.empty()
 			? ExtractIdsList(request.selectedItems)
 			: item ? MessageIdsList{ item->fullId() } : MessageIdsList());
-	if (item && request.selectedItems.empty()) {
+	if (item && request.view && request.selectedItems.empty()) {
 		Nagram::AddReadingMenu(result, item);
 		Settings::AddNagramFilterMenu(result, item, list->controller());
-		Nagram::AddRepeatActions(result, list->controller(), item, request);
+		Nagram::AddRepeatActions(result, list->controller(), item);
 	}
 
 	if (item) {

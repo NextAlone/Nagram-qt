@@ -1,9 +1,5 @@
 #pragma once
 
-namespace HistoryView {
-struct ContextMenuRequest;
-} // namespace HistoryView
-
 namespace Window {
 class SessionController;
 } // namespace Window
@@ -21,8 +17,7 @@ namespace Nagram {
 void AddRepeatActions(
 	not_null<Ui::PopupMenu*> menu,
 	not_null<Window::SessionController*> controller,
-	not_null<HistoryItem*> item,
-	const HistoryView::ContextMenuRequest &request);
+	not_null<HistoryItem*> item);
 
 [[nodiscard]] bool MessageForwardable(not_null<HistoryItem*> item);
 

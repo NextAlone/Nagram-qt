@@ -1,9 +1,12 @@
 #include "nagram/nagram_repeat.h"
 
 #include "api/api_common.h"
+#include "api/api_sending.h"
 #include "apiwrap.h"
 #include "core/application.h"
 #include "core/core_settings.h"
+#include "data/data_channel.h"
+#include "data/data_chat_participant_status.h"
 #include "data/data_document.h"
 #include "data/data_histories.h"
 #include "data/data_peer.h"
@@ -15,9 +18,12 @@
 #include "history/view/history_view_context_menu.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "mainwidget.h"
 #include "nagram/nagram_menu.h"
+#include "ui/text/text_utilities.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/window_session_controller.h"
+#include "styles/style_menu_icons.h"
 
 namespace Nagram {
 namespace {
@@ -35,12 +41,7 @@ namespace {
 			return false;
 		}
 	}
-	return Data::CanSendTexts(peer)
-		|| Data::CanSendAnyOf(peer, Data::SendRestriction::SendPhotos)
-		|| Data::CanSendAnyOf(peer, Data::SendRestriction::SendVideos)
-		|| Data::CanSendAnyOf(peer, Data::SendRestriction::SendMusic)
-		|| Data::CanSendAnyOf(peer, Data::SendRestriction::SendFiles)
-		|| Data::CanSendAnyOf(peer, Data::SendRestriction::SendStickers);
+	return Data::CanSendAnything(peer);
 }
 
 void RepeatWithQuote(
@@ -56,13 +57,22 @@ void RepeatWithQuote(
 		return;
 	}
 
+	// Directly forward to the same chat with author info preserved
 	auto draft = Data::ForwardDraft{
 		.ids = owner->itemOrItsGroup(resolved),
 		.options = Data::ForwardOptions::PreserveInfo,
 	};
 
-	history->setForwardDraft(std::move(draft));
-	controller->content()->cancelSelection();
+	auto resolvedDraft = history->resolveForwardDraft(draft);
+	if (!resolvedDraft.items.empty()) {
+		auto action = Api::SendAction(history);
+		action.clearDraft = false;
+		action.generateLocal = false;
+		history->session().api().forwardMessages(
+			std::move(resolvedDraft),
+			action,
+			nullptr);
+	}
 }
 
 void RepeatWithoutQuote(
@@ -70,8 +80,6 @@ void RepeatWithoutQuote(
 		not_null<HistoryItem*> item) {
 	const auto history = item->history();
 	const auto owner = &item->history()->owner();
-	const auto peer = history->peer;
-
 	// Re-resolve item to prevent use-after-free
 	const auto itemId = item->fullId();
 	const auto resolved = owner->message(itemId);
@@ -83,23 +91,23 @@ void RepeatWithoutQuote(
 	auto action = Api::SendAction(history);
 	action.clearDraft = false;
 	action.replyTo = {};
+	auto message = Api::MessageToSend(std::move(action));
+	const auto &original = resolved->originalText();
+	message.textWithTags = {
+		original.text,
+		TextUtilities::ConvertEntitiesToTextTags(original.entities),
+	};
 
 	if (const auto photo = media ? media->photo() : nullptr) {
-		const auto &session = history->session();
 		Api::SendExistingPhoto(
-			Api::MessageToSend(std::move(action)),
-			photo,
-			resolved->originalText());
+			std::move(message),
+			photo);
 	} else if (const auto document = media ? media->document() : nullptr) {
-		const auto &session = history->session();
 		Api::SendExistingDocument(
-			Api::MessageToSend(std::move(action)),
-			document,
-			resolved->originalText());
-	} else if (!resolved->originalText().text.isEmpty()) {
-		const auto &session = history->session();
-		session.api().sendMessage(Api::MessageToSend(std::move(action)
-			.withText(resolved->originalText())));
+			std::move(message),
+			document);
+	} else if (!original.text.isEmpty()) {
+		history->session().api().sendMessage(std::move(message));
 	}
 }
 
@@ -116,13 +124,22 @@ void ForwardWithoutQuote(
 		return;
 	}
 
+	// Directly forward to the same chat without sender names
 	auto draft = Data::ForwardDraft{
 		.ids = owner->itemOrItsGroup(resolved),
 		.options = Data::ForwardOptions::NoSenderNames,
 	};
 
-	history->setForwardDraft(std::move(draft));
-	controller->content()->cancelSelection();
+	auto resolvedDraft = history->resolveForwardDraft(draft);
+	if (!resolvedDraft.items.empty()) {
+		auto action = Api::SendAction(history);
+		action.clearDraft = false;
+		action.generateLocal = false;
+		history->session().api().forwardMessages(
+			std::move(resolvedDraft),
+			action,
+			nullptr);
+	}
 }
 
 } // namespace
@@ -138,38 +155,47 @@ bool MessageForwardable(not_null<HistoryItem*> item) {
 void AddRepeatActions(
 		not_null<Ui::PopupMenu*> menu,
 		not_null<Window::SessionController*> controller,
-		not_null<HistoryItem*> item,
-		const HistoryView::ContextMenuRequest &request) {
-	const auto &settings = Core::App().settings();
+		not_null<HistoryItem*> item) {
+	auto &settings = Core::App().settings();
+	const auto forwardable = MessageForwardable(item);
 
 	// Repeat with quote (forward to same chat with author info)
+	// If not forwardable, fall back to ForwardWithoutQuote
 	if (!MenuHidden(settings, MenuAction::Repeat) && CanRepeat(item)) {
 		AddOrderedMenuAction(
 			menu,
 			MenuAction::Repeat,
 			tr::lng_nagram_action_repeat(tr::now),
-			[=] { RepeatWithQuote(controller, item); });
+			[=] {
+				if (forwardable) {
+					RepeatWithQuote(controller, item);
+				} else {
+					ForwardWithoutQuote(controller, item);
+				}
+			},
+			&st::menuIconRepeat);
 	}
 
 	// Repeat without quote (resend content as own message)
+	// If not forwardable, this is the same as RepeatNoQuote
 	if (!MenuHidden(settings, MenuAction::RepeatNoQuote) && CanRepeat(item)) {
 		AddOrderedMenuAction(
 			menu,
 			MenuAction::RepeatNoQuote,
 			tr::lng_nagram_action_repeat_no_quote(tr::now),
-			[=] { RepeatWithoutQuote(controller, item); });
+			[=] { RepeatWithoutQuote(controller, item); },
+			&st::menuIconRepeat);
 	}
 
 	// Forward without quote (forward with no sender names)
-	if (!MenuHidden(settings, MenuAction::ForwardNoQuote)
-		&& MessageForwardable(item)) {
+	if (!MenuHidden(settings, MenuAction::ForwardNoQuote) && forwardable) {
 		AddOrderedMenuAction(
 			menu,
 			MenuAction::ForwardNoQuote,
 			tr::lng_nagram_action_forward_no_quote(tr::now),
-			[=] { ForwardWithoutQuote(controller, item); });
+			[=] { ForwardWithoutQuote(controller, item); },
+			&st::menuIconForward);
 	}
 }
 
 } // namespace Nagram
-
