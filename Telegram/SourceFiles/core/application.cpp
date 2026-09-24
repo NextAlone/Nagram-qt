@@ -348,7 +348,7 @@ void Application::run() {
 	style::SetCustomFont(settings().customFontFamily());
 	const auto monospaceFont = Nagram::MonospaceFont(settings());
 	const auto fontAvailable = Nagram::MonospaceFontAvailable(monospaceFont);
-	style::SetCustomMonospaceFont(fontAvailable ? monospaceFont : QString());
+	Nagram::SetMonospaceFont(settings(), fontAvailable ? monospaceFont : QString());
 	style::internal::StartFonts();
 
 	Test::ApplyStartupOverrides();
