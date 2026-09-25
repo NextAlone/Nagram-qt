@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+# Trigger CI rebuild for v0.1.0-pre.1 release
 cd Telegram
 ./configure.sh "$@"
 # KEEP_GOING=1 lets ninja report every failing translation unit in one
